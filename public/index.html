@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LearnTopia - RPG Multiplayer Game</title>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js" defer></script>
+  <script src="game.js" defer></script>
+</head>
+<body>
+
+  <!-- Background Orbs -->
+  <div class="background-orbs" id="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- 1. Authentication View -->
+  <section id="auth-view" class="view">
+    <div class="glass-panel">
+      <h1>Learn<span>Topia</span></h1>
+      <h2>Login or Register</h2>
+      <input type="text" id="auth-username" placeholder="Username" autocomplete="off" />
+      <input type="password" id="auth-password" placeholder="Password" />
+      <div class="action-buttons mt">
+        <button id="btn-login" class="btn primary">Login</button>
+        <button id="btn-register" class="btn secondary">Register</button>
+      </div>
+      <div id="auth-error" class="error-msg"></div>
+    </div>
+  </section>
+
+  <!-- 2. Dashboard View -->
+  <section id="dashboard-view" class="view hidden">
+    <div class="glass-panel">
+      <h1>Dashboard</h1>
+      <h2>Welcome, <span id="dash-username"></span>!</h2>
+      <p>Coins: <span id="dash-coins">0</span> 🪙 | Fish: <span id="dash-fish">0</span>🐟</p>
+      
+      <div class="action-buttons mt">
+        <button id="btn-show-join" class="btn primary">Join Room</button>
+        <button id="btn-host-game" class="btn secondary">Host</button>
+        <button id="btn-show-profile" class="btn secondary">Profile</button>
+        <button id="btn-show-cosmetic-shop" class="btn secondary">Shop</button>
+      </div>
+
+      <div id="join-form-container" class="hidden slide-down mt">
+        <input type="text" id="join-code" placeholder="Game Code" autocomplete="off" maxlength="4" style="text-transform:uppercase" />
+        <button id="btn-submit-join" class="btn primary full-width">Connect to Room</button>
+      </div>
+      <div id="dashboard-error" class="error-msg"></div>
+    </div>
+  </section>
+
+  <!-- Profile Modal (Moved out of views) -->
+  <div id="profile-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel">
+      <h2>My Profile 🛡️</h2>
+      <div class="mt">
+        <input type="text" id="profile-new-username" placeholder="New Username" />
+        <button id="btn-change-username" class="btn secondary full-width">Change Username</button>
+      </div>
+      <hr style="margin:20px 0; border:1px solid rgba(255,255,255,0.1)"/>
+      <h3>Equip Cosmetics</h3>
+      <p class="mt">Active Skin: <span id="prof-skin-val">White</span></p>
+      <div id="unlocked-skins-grid" class="shop-grid"></div>
+      
+      <p class="mt">Active Trail: <span id="prof-trail-val">None</span></p>
+      <div id="unlocked-trails-grid" class="shop-grid"></div>
+
+      <button id="btn-close-profile" class="btn primary mt full-width">Close Profile (Esc)</button>
+    </div>
+  </div>
+
+  <!-- Cosmetics Shop Modal -->
+  <div id="cosmetic-shop-modal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel shop-container">
+      <h2>Cosmetics Boutique 👗</h2>
+      <p>Buy skins and trails to customize your character!</p>
+      
+      <div class="shop-grid mt">
+        <div class="shop-item" style="border-color: #facc15; background: linear-gradient(135deg, rgba(250,204,21,0.2), rgba(255,255,255,0.05));">
+          <div style="font-size: 3rem; text-align: center; margin-bottom: 10px;">🎁</div>
+          <h4>Mystery Pack</h4>
+          <p style="font-size: 0.8rem; text-align:center; padding-bottom:5px;">Unlock a random skin or trail!</p>
+          <button class="btn btn-buy primary" data-category="pack" data-value="random" data-price="50">50 🪙</button>
+        </div>
+      </div>
+      <button id="btn-close-cosmetic-shop" class="btn secondary mt full-width">Close Boutique (Esc)</button>
+    </div>
+  </div>
+
+  <!-- Unboxing Modal -->
+  <div id="unboxing-modal" class="modal-overlay hidden" style="z-index: 50;">
+    <div class="modal-content glass-panel" style="text-align: center;">
+      <h2 id="unboxing-title">You Unlocked!</h2>
+      <div id="unboxing-display" style="margin: 20px auto; display: flex; justify-content: center; align-items: center; min-height: 120px;"></div>
+      <button id="btn-close-unboxing" class="btn primary mt full-width">Awesome!</button>
+    </div>
+  </div>
+
+  <!-- 3. Host Lobby View -->
+  <section id="host-lobby-view" class="view hidden">
+    <div class="glass-panel">
+      <h2>Host Room</h2>
+      <div class="game-code-display">
+        <span>Game Code:</span>
+        <h3 id="display-game-code">----</h3>
+      </div>
+      <div class="players-list-container">
+        <h4>Players (<span id="player-count">0</span>)</h4>
+        <ul id="host-player-list" class="player-list"></ul>
+      </div>
+      <div class="mt" style="text-align: left;">
+        <label for="game-mode-select">Game Mode:</label>
+        <select id="game-mode-select" class="full-width mt" style="padding:10px; border-radius:10px; background: rgba(255,255,255,0.2); color:white; border:none; outline:none; font-family:'Outfit'; font-size:1rem;">
+          <option value="fishtopia" style="color:black;">Fishtopia</option>
+          <option value="dontlookdown" style="color:black;">Don't Look Down</option>
+          <option value="onewayout" style="color:black;">One Way Out</option>
+          <option value="coredefender" style="color:black;">Core Defender</option>
+        </select>
+      </div>
+      
+      <!-- Host Options -->
+      <div id="host-options-container" class="mt" style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px; text-align:left;">
+        <div style="margin-bottom: 10px;">
+          <label for="opt-duration">Game Duration (Minutes)</label>
+          <input type="number" id="opt-duration" value="10" class="full-width mt" style="padding:8px; border-radius:5px; border:none; outline:none;" />
+        </div>
+        
+        <div id="opt-fishtopia-group" style="margin-bottom: 10px;">
+          <label for="opt-bait">Bait Per Question</label>
+          <input type="number" id="opt-bait" value="2" class="full-width mt" style="padding:8px; border-radius:5px; border:none; outline:none;" />
+        </div>
+
+        <div id="opt-platformer-group" style="margin-bottom: 10px; display:none;">
+          <label for="opt-energy">Energy Per Question</label>
+          <input type="number" id="opt-energy" value="1000" class="full-width mt" style="padding:8px; border-radius:5px; border:none; outline:none;" />
+        </div>
+      </div>
+
+      <button id="btn-start-game" class="btn primary full-width mt" disabled>START GAME</button>
+      <button onclick="location.reload()" class="btn secondary mt full-width">Leave Room</button>
+    </div>
+  </section>
+
+  <!-- Player Waiting Lobby -->
+  <section id="player-lobby-view" class="view hidden">
+    <div class="glass-panel">
+      <h2>Waiting Room</h2>
+      <div class="spinner"></div>
+      <p>Waiting for the host to launch the 2D World...</p>
+      <div class="player-info-card mt">
+        <p>Nickname: <strong id="lobby-nickname">---</strong></p>
+      </div>
+      <button onclick="location.reload()" class="btn secondary mt full-width">Leave Room</button>
+    </div>
+  </section>
+
+  <!-- 5. Results Leaderboard View -->
+  <section id="results-view" class="view hidden">
+    <div class="glass-panel">
+      <h2>Match Results 🏆</h2>
+      <p>Rankings based on total accumulated Net Worth (Coins).</p>
+      <ul id="results-leaderboard" class="player-list mt" style="max-height: 300px; text-align:left;"></ul>
+      <button id="btn-return-dashboard" class="btn primary full-width mt">Return to Dashboard</button>
+    </div>
+  </section>
+
+
+  <!-- 4. Game Canvas View -->
+  <section id="game-view" class="hidden">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud" class="hud">
+      <button id="btn-end-game" class="hud-item hidden" style="background: var(--accent-danger); cursor:pointer;">END GAME</button>
+      
+      <!-- Fishtopia HUD -->
+      <div id="hud-rpg-group" style="display:flex; gap:10px;">
+        <div class="hud-item tooltip">🪱 <span id="hud-bait">0</span></div>
+        <div class="hud-item tooltip">🐟 <span id="hud-fish">0/3</span></div>
+        <div class="hud-item tooltip">🪙 <span id="hud-coins">0</span></div>
+        <div class="hud-item tooltip" style="border-color:#b91c1c;">🎟️ <span id="hud-tickets">0</span></div>
+        <div class="hud-item" style="font-size: 0.9rem; padding: 5px 10px;">Rod Lvl: <span id="hud-rod">1</span></div>
+      </div>
+
+      <!-- Platformer HUD (Fixed Placements) -->
+      <div id="hud-platformer-group" class="hidden" style="display:none;">
+        <div id="hud-elevation-container" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#f8fafc; color:#0f172a; padding:10px 20px; border-radius:12px; font-weight:bold; font-size:1.1rem; box-shadow:0 4px 10px rgba(0,0,0,0.15); z-index:100;">
+          Height: <span id="hud-elevation">0</span>m
+        </div>
+        <div id="hud-coredefender-hint" class="hidden" style="position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:#3b82f6; color:#fff; padding:15px 30px; border-radius:12px; font-weight:bold; font-size:1.2rem; box-shadow:0 4px 15px rgba(0,0,0,0.4); z-index:100; border: 2px solid #93c5fd;">
+          Press 'E' anywhere to Build Turret (2000 ⚡)
+        </div>
+      </div>
+
+      <!-- Global Match Clocks -->
+      <div style="position:fixed; top:20px; right:20px; display:flex; gap:10px; z-index:100;">
+        <div id="hud-time-container" style="background:#f8fafc; color:#0f172a; padding:10px 20px; border-radius:12px; font-weight:bold; font-size:1.1rem; box-shadow:0 4px 10px rgba(0,0,0,0.15); display:flex; align-items:center; gap:8px;">
+          ⏱️ <span id="hud-time">10:00</span>
+        </div>
+        <div id="hud-energy-container" style="background:#f8fafc; color:#0f172a; padding:10px 20px; border-radius:12px; font-weight:bold; font-size:1.1rem; box-shadow:0 4px 10px rgba(0,0,0,0.15); display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.3rem;">🔋</span> <span id="hud-energy">1000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- DLD Floating Button -->
+    <button id="btn-answer-questions" class="btn primary hidden" style="position: absolute; bottom: 30px; left: 30px; font-size: 1.1rem; padding: 15px 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 100;">Answer Questions</button>
+
+    <!-- Energy Warning Modals -->
+    <div id="low-energy-modal" class="modal hidden" style="z-index: 1000;">
+      <div class="modal-content" style="background:white; color:black; max-width:400px; border-radius:10px; padding:20px; position:relative; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+        <button onclick="document.getElementById('low-energy-modal').classList.add('hidden')" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:1.5rem; cursor:pointer; color:#94a3b8;">&times;</button>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+          <div style="background:#f59e0b; color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.2rem;">!</div>
+          <h2 style="margin:0; font-size:1.5rem; color:#1e293b;">Low On Energy</h2>
+        </div>
+        <p style="margin:0; font-size:1rem; color:#475569; line-height:1.5;">You're running low on energy! Answer some questions to make sure you don't run out!</p>
+      </div>
+    </div>
+
+    <div id="out-of-energy-modal" class="modal hidden" style="z-index: 1000;">
+      <div class="modal-content" style="background:white; color:black; max-width:400px; border-radius:10px; padding:20px; position:relative; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+        <button onclick="document.getElementById('out-of-energy-modal').classList.add('hidden')" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:1.5rem; cursor:pointer; color:#94a3b8;">&times;</button>
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+          <div style="background:#ef4444; color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:1.2rem;">&times;</div>
+          <h2 style="margin:0; font-size:1.5rem; color:#1e293b;">Out Of Energy!</h2>
+        </div>
+        <p style="margin:0; font-size:1rem; color:#475569; line-height:1.5;">You ran out of energy — you can't move! Click "Answer Questions" to gain energy.</p>
+      </div>
+    </div>
+
+    <div id="feedback-toast" class="toast">Action Result</div>
+
+    <div id="question-modal" class="modal-overlay hidden">
+      <div class="modal-content glass-panel">
+        <h2>Trivia Time: Math!</h2>
+        <h3 id="question-text" class="mt">Loading question...</h3>
+        <div id="options-grid" class="options-grid mt"></div>
+      </div>
+    </div>
+
+    <!-- Gear Shop (in-game only) -->
+    <div id="shop-modal" class="modal-overlay hidden">
+      <div class="modal-content glass-panel shop-container">
+        <h2>LearnTopia Gear Shop 🎣</h2>
+        <p>Enhance your fishing capabilities or gain access to Premium Waters!</p>
+        
+        <div class="shop-grid mt">
+          <div class="shop-item">
+            <h4>VIP Ticket 🎟️</h4>
+            <p style="font-size:0.8rem">Access VIP Waters</p>
+            <button class="btn btn-buy primary" data-category="vipTicket" data-value="1" data-price="250">250 🪙</button>
+          </div>
+          <div class="shop-item">
+            <h4>Legend Ticket 🎫</h4>
+            <p style="font-size:0.8rem">Access Legend Waters</p>
+            <button class="btn btn-buy primary" data-category="legendTicket" data-value="1" data-price="1000">1000 🪙</button>
+          </div>
+          <div class="shop-item">
+            <h4>Upgrade Rod 🎣</h4>
+            <p style="font-size:0.8rem">+5% Rare Fish Odds</p>
+            <button class="btn btn-buy primary" data-category="rod" data-value="1" data-price="2000">2000 🪙</button>
+          </div>
+          <div class="shop-item">
+            <h4>Exp. Backpack 🎒</h4>
+            <p style="font-size:0.8rem">+3 Max Fish Capacity</p>
+            <button class="btn btn-buy primary" data-category="backpack" data-value="1" data-price="1500">1500 🪙</button>
+          </div>
+        </div>
+
+        <button id="btn-close-shop" class="btn secondary mt full-width">Close Shop (Esc)</button>
+      </div>
+    </div>
+
+  </section>
+</body>
+</html>

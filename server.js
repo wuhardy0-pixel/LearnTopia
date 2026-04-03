@@ -230,7 +230,23 @@ io.on('connection', (socket) => {
         };
         game.monsters = [];
         game.projectiles = [];
+      } else if (game.mode === 'blastball') {
+        game.ball = { x: 0, y: 0, vx: 0, vy: 0, radius: 45 };
+        game.scores = { kitcolona: 0, gimadrid: 0 };
+        game.map = {
+          stations: [
+            { id: 1, x: -1100, y: -700, radius: 50, type: 'question', label: 'E: Hack Terminal' },
+            { id: 2, x: 1100, y: -700, radius: 50, type: 'question', label: 'E: Hack Terminal' },
+            { id: 3, x: -1100, y: 700, radius: 50, type: 'question', label: 'E: Hack Terminal' },
+            { id: 4, x: 1100, y: 700, radius: 50, type: 'question', label: 'E: Hack Terminal' }
+          ]
+        };
+        game.monsters = [];
+        game.projectiles = [];
       }
+
+      let kitCount = 0;
+      let gimCount = 0;
 
       Object.values(game.players).forEach(p => {
         if (game.mode === 'fishtopia') {
@@ -242,6 +258,17 @@ io.on('connection', (socket) => {
           p.x = Math.random() * 200 - 100;
           p.y = Math.random() * 200 - 100;
           p.energy = 0; p.hp = 100; p.kills = 0; p.cards = [];
+        } else if (game.mode === 'blastball') {
+          if (kitCount <= gimCount) {
+             p.team = 'kitcolona';
+             p.x = -800; p.y = 0;
+             kitCount++;
+          } else {
+             p.team = 'gimadrid';
+             p.x = 800; p.y = 0;
+             gimCount++;
+          }
+          p.energy = 0; p.hp = 100;
         } else {
           p.x = DLD_WIDTH / 2;
           p.y = -50; 
@@ -314,6 +341,9 @@ io.on('connection', (socket) => {
       } else if (game.mode === 'dontlookdown' || game.mode === 'onewayout' || game.mode === 'coredefender') {
         player.energy += parseInt(reward);
         socket.emit('toast', { msg: `Correct! +${reward} Energy ⚡`, success: true });
+      } else if (game.mode === 'blastball') {
+        player.energy += parseInt(reward);
+        socket.emit('toast', { msg: `Correct! +${reward} Blasts 🔫`, success: true });
       }
     }
 
@@ -369,9 +399,12 @@ io.on('connection', (socket) => {
       }
     }
 
-    if (actionData.type === 'shoot' && (game.mode === 'onewayout' || game.mode === 'coredefender')) {
-      if (player.energy >= 10) {
-        player.energy -= 10;
+    // Removed obsolete Super Smash Blast logic
+
+    if (actionData.type === 'shoot' && (game.mode === 'onewayout' || game.mode === 'coredefender' || game.mode === 'blastball')) {
+      let cost = 10;
+      if (player.energy >= cost) {
+        player.energy -= cost;
         const angle = Math.atan2(actionData.ty - player.y, actionData.tx - player.x);
         game.projectiles.push({
            x: player.x, y: player.y,
@@ -379,7 +412,8 @@ io.on('connection', (socket) => {
            ownerId: socket.id, damage: 50
         });
       } else {
-        socket.emit('toast', { msg: 'Not enough energy to shoot! (Costs 10)', success: false });
+        let msg = game.mode === 'blastball' ? 'Out of Blasts! Answer Questions!' : 'Not enough energy to shoot! (Costs 10)';
+        socket.emit('toast', { msg, success: false });
       }
     }
 
@@ -520,6 +554,10 @@ function endGameProcedure(code, game) {
     leaderboard = Object.values(game.players).map(p => {
       return { name: p.name, score: p.kills || 0, scoreLabel: '☠️ Kills' };
     }).sort((a,b) => b.score - a.score);
+  } else if (game.mode === 'blastball') {
+    leaderboard = Object.values(game.players).map(p => {
+      return { name: p.name, score: p.goals || 0, scoreLabel: '⚽ Goals' };
+    }).sort((a,b) => b.score - a.score);
   } else {
     leaderboard = Object.values(game.players).map(p => {
       let feet = Math.max(0, Math.floor(-p.highestY / 10));
@@ -583,14 +621,92 @@ setInterval(() => {
          }
       }
          
-      if (game.projectiles && (game.mode === 'onewayout' || game.mode === 'coredefender')) {
+      if (game.mode === 'blastball' && game.ball) {
+          if (game.ball.scored) {
+             if (Date.now() > game.ball.respawnTime) {
+                game.ball.scored = false;
+                game.ball.x = 0; game.ball.y = 0; game.ball.vx = 0; game.ball.vy = 0;
+             } else {
+                game.ball.x = 0; game.ball.y = 0; game.ball.vx = 0; game.ball.vy = 0;
+             }
+          } else {
+             game.ball.vx *= 0.985;
+             game.ball.vy *= 0.985;
+             game.ball.x += game.ball.vx;
+             game.ball.y += game.ball.vy;
+             
+             const halfH = 800;
+             const halfW = 1200;
+             const goalSize = 450;
+             
+             if (game.ball.y - game.ball.radius < -halfH) { game.ball.y = -halfH + game.ball.radius; game.ball.vy *= -1; }
+             if (game.ball.y + game.ball.radius > halfH) { game.ball.y = halfH - game.ball.radius; game.ball.vy *= -1; }
+             
+             if (game.ball.x - game.ball.radius < -halfW) {
+                if (game.ball.y > -goalSize/2 && game.ball.y < goalSize/2) {
+                   game.scores.gimadrid += 1;
+                   if (game.ball.lastTouchedBy && game.players[game.ball.lastTouchedBy]) {
+                       game.players[game.ball.lastTouchedBy].goals = (game.players[game.ball.lastTouchedBy].goals || 0) + 1;
+                   }
+                   game.ball.scored = true; game.ball.respawnTime = Date.now() + 3000;
+                   io.to(code).emit('blastEffect', { x: game.ball.x, y: game.ball.y, radius: 450 });
+                   io.to(code).emit('goalScored', { team: 'gimadrid', scores: game.scores });
+                } else {
+                   game.ball.x = -halfW + game.ball.radius; game.ball.vx *= -1;
+                }
+             }
+             if (game.ball.x + game.ball.radius > halfW) {
+                if (game.ball.y > -goalSize/2 && game.ball.y < goalSize/2) {
+                   game.scores.kitcolona += 1;
+                   if (game.ball.lastTouchedBy && game.players[game.ball.lastTouchedBy]) {
+                       game.players[game.ball.lastTouchedBy].goals = (game.players[game.ball.lastTouchedBy].goals || 0) + 1;
+                   }
+                   game.ball.scored = true; game.ball.respawnTime = Date.now() + 3000;
+                   io.to(code).emit('blastEffect', { x: game.ball.x, y: game.ball.y, radius: 450 });
+                   io.to(code).emit('goalScored', { team: 'kitcolona', scores: game.scores });
+                } else {
+                   game.ball.x = halfW - game.ball.radius; game.ball.vx *= -1;
+                }
+             }
+             
+             for (let id in game.players) {
+                let p = game.players[id];
+                let dx = game.ball.x - p.x;
+                let dy = game.ball.y - p.y;
+                let dist = Math.hypot(dx, dy);
+                let minDist = game.ball.radius + 20;
+                if (dist < minDist && dist > 0) {
+                    let overlap = minDist - dist;
+                    game.ball.x += (dx / dist) * overlap;
+                    game.ball.y += (dy / dist) * overlap;
+                    game.ball.vx += (dx / dist) * 3;
+                    game.ball.vy += (dy / dist) * 3;
+                    game.ball.lastTouchedBy = id;
+                }
+             }
+          }
+      }
+      
+      if (game.projectiles && (game.mode === 'onewayout' || game.mode === 'coredefender' || game.mode === 'blastball')) {
            for (let i = game.projectiles.length - 1; i >= 0; i--) {
              let proj = game.projectiles[i];
              proj.x += proj.vx * dt;
              proj.y += proj.vy * dt;
              
              let hit = false;
-             if (proj.ownerId) {
+             
+             if (game.mode === 'blastball' && game.ball && !game.ball.scored) {
+                let d = Math.hypot(proj.x - game.ball.x, proj.y - game.ball.y);
+                if (d < game.ball.radius + 15) {
+                   game.ball.vx += proj.vx * 0.12;
+                   game.ball.vy += proj.vy * 0.12;
+                   game.ball.lastTouchedBy = proj.ownerId;
+                   io.to(code).emit('blastEffect', { x: proj.x, y: proj.y, radius: 120 });
+                   hit = true;
+                }
+             }
+
+             if (!hit && proj.ownerId && game.mode !== 'blastball') {
                // Friendly Fire: Check against Monsters
                for (let mIdx = 0; mIdx < game.monsters.length; mIdx++) {
                  let m = game.monsters[mIdx];
@@ -608,7 +724,7 @@ setInterval(() => {
                    break;
                  }
                }
-             } else {
+             } else if (!hit && !proj.ownerId && game.mode !== 'blastball') {
                // Enemy Fire: Check against Players
                for (let pId in game.players) {
                  let p = game.players[pId];
@@ -810,6 +926,15 @@ setInterval(() => {
           p.x = Math.max(-2000, Math.min(newX, 2000));
           p.y = Math.max(-2000, Math.min(newY, 2000));
 
+        } else if (game.mode === 'blastball') {
+          let mag = Math.hypot(p.inputs.dx, p.inputs.dy);
+          let nDx = mag > 0 ? p.inputs.dx / mag : 0;
+          let nDy = mag > 0 ? p.inputs.dy / mag : 0;
+          let newX = p.x + nDx * p.speed * dt;
+          let newY = p.y + nDy * p.speed * dt;
+          p.x = Math.max(-1200 + 20, Math.min(newX, 1200 - 20));
+          p.y = Math.max(-800 + 20, Math.min(newY, 800 - 20));
+
         } else if (game.mode === 'dontlookdown') {
           // Parkour 2D Physics Logic
           if (p.energy > 0) {
@@ -962,7 +1087,9 @@ setInterval(() => {
          projectiles: game.projectiles,
          podLaunchTime: (game.map && game.map.escapePod && game.map.escapePod.triggered && !game.map.escapePod.launched) ? game.map.escapePod.launchTime : null,
          coreHp: (game.map && game.map.core) ? game.map.core.hp : undefined,
-         stations: game.mode === 'coredefender' ? game.map.stations : undefined
+         stations: game.mode === 'coredefender' ? game.map.stations : undefined,
+         ball: game.mode === 'blastball' ? game.ball : undefined,
+         scores: game.mode === 'blastball' ? game.scores : undefined
       });
     }
   }

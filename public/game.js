@@ -1,4 +1,4 @@
-const socket = io();
+const socket = io('https://learntopias.onrender.com');
 
 // STATE
 let myRole = null;
@@ -13,6 +13,7 @@ let gamePlatforms = [];
 let gameStations = [];
 let gameMap = null;
 let gameEndTime = 0;
+let explosions = [];
 
 // DOM Views
 const views = {
@@ -42,6 +43,38 @@ document.getElementById('btn-register').addEventListener('click', () => {
   if (u && p) socket.emit('register', { username: u, password: p });
 });
 
+let musicMuted = false;
+const bgMusic = document.getElementById('bg-music');
+const btnMusic = document.getElementById('btn-toggle-music');
+const btnNextMusic = document.getElementById('btn-next-music');
+
+let currentTrack = 0;
+const playlist = ['music.mp3', 'tiger.mp4'];
+
+if (btnNextMusic && bgMusic) {
+  btnNextMusic.addEventListener('click', () => {
+    currentTrack = (currentTrack + 1) % playlist.length;
+    bgMusic.src = playlist[currentTrack];
+    if (!musicMuted) {
+      bgMusic.play().catch(e => console.log(e));
+    }
+  });
+}
+
+if (btnMusic && bgMusic) {
+  bgMusic.volume = 0.4; // Set a comfy background volume level permanently
+  btnMusic.addEventListener('click', () => {
+    musicMuted = !musicMuted;
+    if (musicMuted) {
+      bgMusic.pause();
+      btnMusic.textContent = '🔇';
+    } else {
+      bgMusic.play().catch(e => console.log(e));
+      btnMusic.textContent = '🔊';
+    }
+  });
+}
+
 socket.on('authSuccess', ({ username, data }) => {
   myUsername = username;
   localUserConfig = data;
@@ -49,6 +82,10 @@ socket.on('authSuccess', ({ username, data }) => {
   updateDashboard();
   updateHUD();
   renderProfileData();
+
+  if (bgMusic && !musicMuted) {
+    bgMusic.play().catch(e => console.log('Autoplay temporarily blocked until fully interacted:', e));
+  }
 });
 
 socket.on('authError', (msg) => {
@@ -172,11 +209,15 @@ function updateHostList() {
 }
 
 document.getElementById('game-mode-select').addEventListener('change', (e) => {
+  document.getElementById('opt-fishtopia-group').style.display = 'none';
+  document.getElementById('opt-platformer-group').style.display = 'none';
+  document.getElementById('opt-blastball-group').style.display = 'none';
+
   if (e.target.value === 'fishtopia') {
     document.getElementById('opt-fishtopia-group').style.display = 'block';
-    document.getElementById('opt-platformer-group').style.display = 'none';
+  } else if (e.target.value === 'blastball') {
+    document.getElementById('opt-blastball-group').style.display = 'block';
   } else {
-    document.getElementById('opt-fishtopia-group').style.display = 'none';
     document.getElementById('opt-platformer-group').style.display = 'block';
   }
 });
@@ -186,9 +227,10 @@ document.getElementById('btn-start-game').addEventListener('click', () => {
     const s = document.getElementById('game-mode-select');
     const mode = s ? s.value : 'fishtopia';
     const duration = parseInt(document.getElementById('opt-duration').value) || 10;
-    const rewardVal = mode === 'fishtopia' ?
-      parseInt(document.getElementById('opt-bait').value) :
-      parseInt(document.getElementById('opt-energy').value);
+
+    let rewardVal = parseInt(document.getElementById('opt-energy').value) || 1000;
+    if (mode === 'fishtopia') rewardVal = parseInt(document.getElementById('opt-bait').value) || 2;
+    else if (mode === 'blastball') rewardVal = parseInt(document.getElementById('opt-blasts').value) || 15;
 
     socket.emit('startGame', { code: myCode, mode, duration, rewardVal });
   }
@@ -209,20 +251,37 @@ socket.on('gameStarted', (payload) => {
   }
 
   showView('gameView');
+  canvas.focus();
 
-  if (gameMode === 'dontlookdown' || gameMode === 'onewayout' || gameMode === 'coredefender') {
+  if (gameMode === 'dontlookdown' || gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball') {
     document.getElementById('hud-rpg-group').classList.add('hidden');
     document.getElementById('hud-platformer-group').classList.remove('hidden');
     document.getElementById('hud-platformer-group').style.display = 'flex';
     document.getElementById('hud-energy-container').style.display = 'flex';
     document.getElementById('btn-answer-questions').classList.remove('hidden');
-    if (gameMode === 'onewayout' || gameMode === 'coredefender') document.getElementById('hud-elevation-container').style.display = 'none';
-    else document.getElementById('hud-elevation-container').style.display = 'block';
+
+    if (gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball') {
+      document.getElementById('hud-elevation-container').style.display = 'none';
+    } else {
+      document.getElementById('hud-elevation-container').style.display = 'block';
+    }
+
+    if (gameMode === 'blastball') {
+      document.getElementById('hud-blastball-score').classList.remove('hidden');
+      document.getElementById('hud-blastball-score').style.display = 'flex';
+      const span = document.getElementById('hud-energy').nextElementSibling;
+      if (span) span.textContent = '🔫 Blasts';
+    } else {
+      const hudbb = document.getElementById('hud-blastball-score');
+      if (hudbb) hudbb.classList.add('hidden');
+      const span = document.getElementById('hud-energy').nextElementSibling;
+      if (span) span.textContent = '⚡ Energy';
+    }
 
     const hint = document.getElementById('hud-coredefender-hint');
     if (hint) {
-       if (gameMode === 'coredefender') hint.classList.remove('hidden');
-       else hint.classList.add('hidden');
+      if (gameMode === 'coredefender') hint.classList.remove('hidden');
+      else hint.classList.add('hidden');
     }
 
   } else {
@@ -270,7 +329,7 @@ document.getElementById('btn-return-dashboard').addEventListener('click', () => 
 document.getElementById('btn-answer-questions').addEventListener('click', () => {
   const me = gameState.players[socket.id];
   if (!me) return;
-  if (gameMode === 'dontlookdown') {
+  if (gameMode === 'dontlookdown' || gameMode === 'blastball') {
     showQuestionModal();
   } else if (gameMode === 'onewayout' || gameMode === 'coredefender') {
     if (gameMap) {
@@ -336,6 +395,8 @@ window.addEventListener('keydown', (e) => {
       } else if (gameMode === 'dontlookdown') {
         let near = gameStations.find(s => Math.hypot(me.x - s.x, me.y - s.y) < s.radius);
         if (near) showQuestionModal();
+      } else if (gameMode === 'blastball') {
+        showQuestionModal();
       } else if (gameMode === 'onewayout' || gameMode === 'coredefender') {
         if (gameMap) {
           let nearGate = gameMap.gates ? gameMap.gates.find(g => {
@@ -351,7 +412,7 @@ window.addEventListener('keydown', (e) => {
             if (nearStation.type === 'vendor' || nearStation.type === 'turret') socket.emit('interact', { type: 'buy', stationId: nearStation.id });
             else showQuestionModal();
           } else if (gameMode === 'coredefender') {
-             socket.emit('interact', { type: 'build_turret' });
+            socket.emit('interact', { type: 'build_turret' });
           }
         }
       }
@@ -368,7 +429,7 @@ window.addEventListener('keydown', (e) => {
 
 canvas.addEventListener('mousedown', (e) => {
   if (views.gameView.classList.contains('hidden') || !myRole) return;
-  if (gameMode === 'onewayout' || gameMode === 'coredefender') {
+  if (gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball') {
     const me = gameState.players[socket.id];
     if (me) {
       const rect = canvas.getBoundingClientRect();
@@ -563,18 +624,64 @@ function render() {
         ctx.setLineDash([]); // Reset dash
       }
 
+    } else if (gameMode === 'blastball') {
+      ctx.translate(canvas.width / 2 - me.x, canvas.height / 2 - me.y);
+
+      const SOCCER_W = 2400; const SOCCER_H = 1600;
+
+      // Pitch Grass
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(-SOCCER_W / 2, -SOCCER_H / 2, SOCCER_W, SOCCER_H);
+
+      // Grass Pattern (Stripes)
+      ctx.fillStyle = '#16a34a';
+      for (let i = -SOCCER_W / 2; i < SOCCER_W / 2; i += 200) {
+        ctx.fillRect(i, -SOCCER_H / 2, 100, SOCCER_H);
+      }
+
+      // Chalk Lines
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 8;
+      ctx.strokeRect(-SOCCER_W / 2 + 10, -SOCCER_H / 2 + 10, SOCCER_W - 20, SOCCER_H - 20); // Border
+      ctx.beginPath(); ctx.moveTo(0, -SOCCER_H / 2); ctx.lineTo(0, SOCCER_H / 2); ctx.stroke(); // Midline
+      ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.stroke(); // Center Circle
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); // Center dot
+
+      // Goals
+      ctx.fillStyle = '#ef4444'; // Kitcolona Red
+      ctx.fillRect(-SOCCER_W / 2 - 60, -225, 60, 450);
+      ctx.fillStyle = '#3b82f6'; // Gimadrid Blue
+      ctx.fillRect(SOCCER_W / 2, -225, 60, 450);
+
+      // Terminals
+      if (gameState.stations) {
+        for (let s of gameState.stations) {
+          ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+          ctx.fillStyle = '#f59e0b'; ctx.fill();
+          ctx.lineWidth = 6; ctx.strokeStyle = '#fcd34d'; ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = '20px Outfit'; ctx.textAlign = 'center';
+          ctx.fillText(s.label, s.x, s.y + s.radius + 30);
+        }
+      }
+
+      // Ball
+      if (gameState.ball && !gameState.ball.scored) {
+        ctx.beginPath(); ctx.arc(gameState.ball.x, gameState.ball.y, gameState.ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.lineWidth = 5; ctx.strokeStyle = '#0f172a'; ctx.stroke();
+      }
+
     } else if (gameMode === 'onewayout' || gameMode === 'coredefender') {
       ctx.translate(canvas.width / 2 - me.x, canvas.height / 2 - me.y);
 
       ctx.fillStyle = gameMode === 'coredefender' ? '#292524' : '#0f172a';
       ctx.fillRect(me.x - 5000, me.y - 5000, 10000, 10000);
-      
+
       if (gameMode === 'coredefender') {
-          ctx.strokeStyle = '#44403c'; ctx.lineWidth = 2;
-          for (let i=-2000; i<=2000; i+=200) {
-             ctx.beginPath(); ctx.moveTo(i, -2000); ctx.lineTo(i, 2000); ctx.stroke();
-             ctx.beginPath(); ctx.moveTo(-2000, i); ctx.lineTo(2000, i); ctx.stroke();
-          }
+        ctx.strokeStyle = '#44403c'; ctx.lineWidth = 2;
+        for (let i = -2000; i <= 2000; i += 200) {
+          ctx.beginPath(); ctx.moveTo(i, -2000); ctx.lineTo(i, 2000); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(-2000, i); ctx.lineTo(2000, i); ctx.stroke();
+        }
       }
 
       if (gameMap) {
@@ -589,18 +696,18 @@ function render() {
 
         // Draw Stations
         for (let s of gameMap.stations) {
-          ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI*2);
+          ctx.beginPath(); ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
           ctx.fillStyle = s.type === 'vendor' ? '#f59e0b' : (s.type === 'turret' ? '#57534e' : '#3b82f6');
           ctx.fill();
-          ctx.strokeStyle = s.type === 'vendor' ? '#fcd34d' : (s.type === 'turret' ? '#a8a29e' : '#60a5fa'); 
+          ctx.strokeStyle = s.type === 'vendor' ? '#fcd34d' : (s.type === 'turret' ? '#a8a29e' : '#60a5fa');
           ctx.lineWidth = 6; ctx.stroke();
           if (s.type === 'turret' && s.level > 0) {
-             ctx.save();
-             ctx.translate(s.x, s.y);
-             if (s.angle !== undefined) ctx.rotate(s.angle + Math.PI/2);
-             ctx.fillStyle = '#a8a29e'; ctx.fillRect(-8, -s.radius - 20, 16, 40);
-             ctx.restore();
-             ctx.fillStyle = '#14b8a6'; ctx.font = 'bold 18px Outfit'; ctx.fillText(`Lv ${s.level}`, s.x, s.y + 6);
+            ctx.save();
+            ctx.translate(s.x, s.y);
+            if (s.angle !== undefined) ctx.rotate(s.angle + Math.PI / 2);
+            ctx.fillStyle = '#a8a29e'; ctx.fillRect(-8, -s.radius - 20, 16, 40);
+            ctx.restore();
+            ctx.fillStyle = '#14b8a6'; ctx.font = 'bold 18px Outfit'; ctx.fillText(`Lv ${s.level}`, s.x, s.y + 6);
           }
           ctx.fillStyle = '#fff'; ctx.font = '20px Outfit'; ctx.textAlign = 'center';
           ctx.fillText(s.label, s.x, s.y + s.radius + 30);
@@ -620,7 +727,7 @@ function render() {
             }
           }
         }
-        
+
         if (gameMap.escapePod) {
           let pod = gameMap.escapePod;
           ctx.beginPath(); ctx.arc(pod.x, pod.y, pod.radius, 0, Math.PI * 2);
@@ -632,12 +739,12 @@ function render() {
 
         if (gameMap.core) {
           let c = gameMap.core;
-          ctx.beginPath(); ctx.arc(c.x, c.y, c.radius, 0, Math.PI*2);
-          ctx.fillStyle = '#0ea5e9'; ctx.fill(); 
+          ctx.beginPath(); ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+          ctx.fillStyle = '#0ea5e9'; ctx.fill();
           ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 8; ctx.stroke();
-          
+
           ctx.fillStyle = '#000'; ctx.fillRect(c.x - 60, c.y - c.radius - 30, 120, 15);
-          ctx.fillStyle = '#ef4444'; ctx.fillRect(c.x - 60, c.y - c.radius - 30, 120 * (c.hp/c.maxHp), 15);
+          ctx.fillStyle = '#ef4444'; ctx.fillRect(c.x - 60, c.y - c.radius - 30, 120 * (c.hp / c.maxHp), 15);
           ctx.fillStyle = '#fff'; ctx.font = '14px Outfit'; ctx.textAlign = 'center'; ctx.fillText('CORE HP', c.x, c.y - c.radius - 35);
         }
       }
@@ -725,6 +832,28 @@ function render() {
         ctx.fillRect(p.x - 20, p.y - 65, (p.energy / 100) * 40, 5);
       }
     });
+
+    if (explosions) {
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        let ex = explosions[i];
+        ex.life -= 0.05;
+        ctx.beginPath();
+        ctx.arc(ex.x, ex.y, ex.r * (1 - ex.life), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${ex.life})`;
+        ctx.fill();
+
+        // Additional tiny static particles for blast effect
+        for (let p = 0; p < 8; p++) {
+          let px = ex.x + Math.cos(p) * (ex.r * 0.8 * (1 - ex.life));
+          let py = ex.y + Math.sin(p) * (ex.r * 0.8 * (1 - ex.life));
+          ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(252, 211, 77, ${ex.life})`; ctx.fill();
+        }
+
+        if (ex.life <= 0) explosions.splice(i, 1);
+      }
+    }
+
     ctx.restore();
 
     if (gameMode === 'onewayout' && gameState.podLaunchTime) {
@@ -745,11 +874,18 @@ function render() {
       document.getElementById('hud-time').textContent = `${m}:${s < 10 ? '0' + s : s}`;
     }
 
-    if (me && (gameMode === 'dontlookdown' || gameMode === 'onewayout' || gameMode === 'coredefender')) {
+    if (me && (gameMode === 'dontlookdown' || gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball')) {
       document.getElementById('hud-energy').textContent = Math.floor(me.energy);
-      
+
       if (gameMode === 'dontlookdown') {
-         document.getElementById('hud-elevation').textContent = me.elevation;
+        document.getElementById('hud-elevation').textContent = me.elevation || 0;
+      }
+
+      if (gameMode === 'blastball') {
+        if (gameState.scores) {
+          document.getElementById('score-kitcolona').textContent = gameState.scores.kitcolona || 0;
+          document.getElementById('score-gimadrid').textContent = gameState.scores.gimadrid || 0;
+        }
       }
 
       // Urgent UI warning visual
@@ -887,15 +1023,19 @@ document.querySelectorAll('#cosmetic-shop-modal .btn-buy').forEach(btn => {
   });
 });
 
-socket.on('gameState', (data) => { 
-  gameState = data; 
+socket.on('gameState', (data) => {
+  gameState = data;
   if (gameState.coreHp !== undefined && gameMap && gameMap.core) {
-     gameMap.core.hp = gameState.coreHp;
+    gameMap.core.hp = gameState.coreHp;
   }
   if (gameState.stations && gameMap) {
-     gameMap.stations = gameState.stations;
+    gameMap.stations = gameState.stations;
   }
 });
+socket.on('blastEffect', (data) => {
+  explosions.push({ x: data.x, y: data.y, r: data.radius, life: 1.0 });
+});
+
 socket.on('toast', (data) => {
   const toast = document.getElementById('feedback-toast');
 

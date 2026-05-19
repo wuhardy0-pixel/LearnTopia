@@ -1,4 +1,4 @@
-const socket = io('https://learntopias.onrender.com');
+const socket = io();
 
 // STATE
 let myRole = null;

@@ -372,6 +372,14 @@ window.addEventListener('keydown', (e) => {
   if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'BUTTON') return;
 
   const key = e.key.toLowerCase();
+
+  // Blastball: space = super blast, not movement
+  if (key === ' ' && gameMode === 'blastball') {
+    e.preventDefault();
+    if (!e.repeat) socket.emit('interact', { type: 'superBlast' });
+    return;
+  }
+
   let changed = false;
   if (key === 'w' || key === 'arrowup' || key === ' ') {
     keys.w = true; changed = true;
@@ -444,6 +452,7 @@ canvas.addEventListener('mousedown', (e) => {
 
 window.addEventListener('keyup', (e) => {
   const key = e.key.toLowerCase();
+  if (key === ' ' && gameMode === 'blastball') return;
   let changed = false;
   if (key === 'w' || key === 'arrowup' || key === ' ') { keys.w = false; changed = true; }
   if (key === 'a' || key === 'arrowleft') { keys.a = false; changed = true; }
@@ -923,76 +932,290 @@ function updateHUD() {
   document.getElementById('hud-rod').textContent = localUserConfig.equipment.rodLevel;
 }
 
-// First Grade Math Questions (Full Set)
-const SAMPLE_QUESTIONS = [
-  // Part 1: Basic Addition
-  { id: 1, question: "3 + 2 = ___", options: ["4", "5", "6", "2"], answerIndex: 1 },
-  { id: 2, question: "5 + 4 = ___", options: ["8", "9", "10", "7"], answerIndex: 1 },
-  { id: 3, question: "7 + 1 = ___", options: ["6", "7", "8", "9"], answerIndex: 2 },
-  { id: 4, question: "6 + 3 = ___", options: ["8", "9", "10", "11"], answerIndex: 1 },
-  { id: 5, question: "2 + 8 = ___", options: ["9", "10", "11", "12"], answerIndex: 1 },
+// =========================================================
+// Adaptive Math Assessment Engine
+// =========================================================
+const MATH = {
+  rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; },
+  shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  },
+  distractors(target, count, min, max) {
+    const out = [];
+    const tried = new Set([target]);
+    let safety = 60;
+    while (out.length < count && safety-- > 0) {
+      const offset = (Math.random() > 0.5 ? 1 : -1) * (1 + Math.floor(Math.random() * 3));
+      let cand = target + offset;
+      if (cand < min || cand > max || tried.has(cand)) cand = MATH.rand(min, max);
+      if (!tried.has(cand)) { tried.add(cand); out.push(cand); }
+    }
+    while (out.length < count) {
+      const cand = MATH.rand(min, max);
+      if (!tried.has(cand)) { tried.add(cand); out.push(cand); }
+      else if (tried.size > max - min + 1) break;
+    }
+    return out;
+  },
+  mc(answer, distractorPool) {
+    const all = MATH.shuffle([answer, ...distractorPool]).map(String);
+    return { options: all, answerIndex: all.indexOf(String(answer)) };
+  }
+};
 
-  // Part 2: Basic Subtraction
-  { id: 6, question: "5 - 2 = ___", options: ["2", "3", "4", "5"], answerIndex: 1 },
-  { id: 7, question: "9 - 4 = ___", options: ["4", "5", "6", "7"], answerIndex: 1 },
-  { id: 8, question: "10 - 3 = ___", options: ["6", "7", "8", "9"], answerIndex: 1 },
-  { id: 9, question: "7 - 1 = ___", options: ["5", "6", "7", "8"], answerIndex: 1 },
-  { id: 10, question: "8 - 5 = ___", options: ["2", "3", "4", "5"], answerIndex: 1 },
+const MATH_SKILLS = {
+  // ============== KINDERGARTEN ==============
+  'k-count-objects': {
+    grade: 'K', name: 'Counting Objects',
+    generate() {
+      const n = MATH.rand(1, 10);
+      const emoji = ['🍎', '⭐', '🐠', '🪙', '🎈', '🐶', '🌸'][MATH.rand(0, 6)];
+      return {
+        question: `How many ${emoji}?\n${emoji.repeat(n)}`,
+        ...MATH.mc(n, MATH.distractors(n, 3, Math.max(0, n - 3), n + 3))
+      };
+    }
+  },
+  'k-count-forward': {
+    grade: 'K', name: 'Count Forward',
+    generate() {
+      const start = MATH.rand(1, 19);
+      const next = start + 1;
+      return {
+        question: `What number comes after ${start}?`,
+        ...MATH.mc(next, MATH.distractors(next, 3, Math.max(0, next - 3), next + 3))
+      };
+    }
+  },
+  'k-count-backward': {
+    grade: 'K', name: 'Count Backward',
+    generate() {
+      const start = MATH.rand(2, 20);
+      const prev = start - 1;
+      return {
+        question: `What number comes before ${start}?`,
+        ...MATH.mc(prev, MATH.distractors(prev, 3, Math.max(0, prev - 3), prev + 3))
+      };
+    }
+  },
+  'k-compare-numbers': {
+    grade: 'K', name: 'Comparing Numbers',
+    generate() {
+      let a = MATH.rand(1, 10);
+      let b = MATH.rand(1, 10);
+      while (b === a) b = MATH.rand(1, 10);
+      const bigger = Math.max(a, b);
+      const options = [String(a), String(b), 'They are equal'];
+      return {
+        question: `Which is bigger: ${a} or ${b}?`,
+        options,
+        answerIndex: options.indexOf(String(bigger))
+      };
+    }
+  },
+  'k-compare-symbol': {
+    grade: 'K', name: 'Greater / Less Than',
+    generate() {
+      const a = MATH.rand(1, 10);
+      const b = MATH.rand(1, 10);
+      const correct = a > b ? '>' : a < b ? '<' : '=';
+      const opts = ['>', '<', '='];
+      return { question: `${a} ___ ${b}`, options: opts, answerIndex: opts.indexOf(correct) };
+    }
+  },
+  'k-add-within-5': {
+    grade: 'K', name: 'Addition within 5',
+    generate() {
+      const a = MATH.rand(0, 4);
+      const b = MATH.rand(0, 5 - a);
+      const ans = a + b;
+      return { question: `${a} + ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 6)) };
+    }
+  },
+  'k-add-within-10': {
+    grade: 'K', name: 'Addition within 10',
+    generate() {
+      const a = MATH.rand(1, 9);
+      const b = MATH.rand(1, 10 - a);
+      const ans = a + b;
+      return { question: `${a} + ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12)) };
+    }
+  },
+  'k-sub-within-5': {
+    grade: 'K', name: 'Subtraction within 5',
+    generate() {
+      const a = MATH.rand(1, 5);
+      const b = MATH.rand(0, a);
+      const ans = a - b;
+      return { question: `${a} - ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 6)) };
+    }
+  },
+  'k-sub-within-10': {
+    grade: 'K', name: 'Subtraction within 10',
+    generate() {
+      const a = MATH.rand(2, 10);
+      const b = MATH.rand(0, a);
+      const ans = a - b;
+      return { question: `${a} - ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12)) };
+    }
+  },
+  'k-make-10': {
+    grade: 'K', name: 'Make 10',
+    generate() {
+      const a = MATH.rand(1, 9);
+      const missing = 10 - a;
+      return { question: `${a} + ___ = 10`, ...MATH.mc(missing, MATH.distractors(missing, 3, 0, 12)) };
+    }
+  },
+  'k-decompose': {
+    grade: 'K', name: 'Number Bonds',
+    generate() {
+      const total = MATH.rand(3, 10);
+      const part = MATH.rand(1, total - 1);
+      const missing = total - part;
+      return { question: `${total} = ${part} + ___`, ...MATH.mc(missing, MATH.distractors(missing, 3, 0, total + 2)) };
+    }
+  },
+  'k-word-add': {
+    grade: 'K', name: 'Word Problems: Add',
+    generate() {
+      const names = ['Emma', 'Liam', 'Ava', 'Noah', 'Mia', 'Ben'];
+      const items = [['apples', '🍎'], ['cars', '🚗'], ['stickers', '⭐'], ['cookies', '🍪']];
+      const n = names[MATH.rand(0, names.length - 1)];
+      const [item] = items[MATH.rand(0, items.length - 1)];
+      const a = MATH.rand(1, 6);
+      const b = MATH.rand(1, 10 - a);
+      const ans = a + b;
+      return {
+        question: `${n} has ${a} ${item}. ${n} gets ${b} more. How many ${item} now?`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12))
+      };
+    }
+  },
+  'k-word-sub': {
+    grade: 'K', name: 'Word Problems: Subtract',
+    generate() {
+      const names = ['Emma', 'Liam', 'Ava', 'Noah', 'Mia', 'Ben'];
+      const items = [['cookies', '🍪'], ['balloons', '🎈'], ['fish', '🐠'], ['blocks', '🧱']];
+      const n = names[MATH.rand(0, names.length - 1)];
+      const [item] = items[MATH.rand(0, items.length - 1)];
+      const a = MATH.rand(3, 10);
+      const b = MATH.rand(1, a);
+      const ans = a - b;
+      return {
+        question: `${n} has ${a} ${item}. ${b} are gone. How many ${item} left?`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12))
+      };
+    }
+  },
+  'k-shapes': {
+    grade: 'K', name: 'Shapes',
+    generate() {
+      const shapes = [
+        { name: 'triangle', sides: 3, emoji: '🔺' },
+        { name: 'square', sides: 4, emoji: '🟦' },
+        { name: 'pentagon', sides: 5, emoji: '⬟' },
+        { name: 'hexagon', sides: 6, emoji: '⬡' },
+        { name: 'circle', sides: 0, emoji: '⚪' }
+      ];
+      const pick = shapes[MATH.rand(0, shapes.length - 1)];
+      const opts = MATH.shuffle([0, 3, 4, 5, 6]).slice(0, 4);
+      if (!opts.includes(pick.sides)) opts[0] = pick.sides;
+      const finalOpts = MATH.shuffle(opts).map(String);
+      return {
+        question: `How many sides does a ${pick.name} ${pick.emoji} have?`,
+        options: finalOpts,
+        answerIndex: finalOpts.indexOf(String(pick.sides))
+      };
+    }
+  },
+  'k-patterns': {
+    grade: 'K', name: 'Patterns',
+    generate() {
+      const pairs = [['🔴', '🔵'], ['⭐', '🌙'], ['🍎', '🍌'], ['🐶', '🐱'], ['🟥', '🟩']];
+      const [a, b] = pairs[MATH.rand(0, pairs.length - 1)];
+      const seq = a + b + a + b + a;
+      const optionSet = MATH.shuffle([a, b, '⬛', '❓']);
+      return {
+        question: `What comes next?\n${seq} ___`,
+        options: optionSet,
+        answerIndex: optionSet.indexOf(b)
+      };
+    }
+  }
+};
 
-  // Part 3: Number Sense
-  { id: 11, question: "What number comes after 14?", options: ["13", "14", "15", "16"], answerIndex: 2 },
-  { id: 12, question: "What number comes before 20?", options: ["18", "19", "20", "21"], answerIndex: 1 },
-  { id: 13, question: "Fill in the missing number: 5, ___, 7", options: ["4", "6", "8", "9"], answerIndex: 1 },
-  { id: 14, question: "Which is bigger: 9 or 6?", options: ["9", "6", "They are equal"], answerIndex: 0 },
-  { id: 15, question: "Count: 2, 4, 6, ___, 10", options: ["7", "8", "9"], answerIndex: 1 },
+function getMathState(skillId) {
+  if (!localUserConfig.mathProgress) localUserConfig.mathProgress = {};
+  if (!localUserConfig.mathProgress[skillId]) {
+    localUserConfig.mathProgress[skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false };
+  }
+  return localUserConfig.mathProgress[skillId];
+}
 
-  // Part 4: Comparing Numbers
-  { id: 16, question: "7 ___ 5", options: [">", "<", "="], answerIndex: 0 },
-  { id: 17, question: "3 ___ 3", options: [">", "<", "="], answerIndex: 2 },
-  { id: 18, question: "10 ___ 8", options: [">", "<", "="], answerIndex: 0 },
+function pickSkillId() {
+  const grade = localUserConfig.activeGrade || 'K';
+  const skills = Object.entries(MATH_SKILLS).filter(([, s]) => s.grade === grade);
+  if (!skills.length) return null;
+  // Weight unmastered skills higher; weak skills get up to ~4x weight
+  const weighted = skills.map(([id]) => {
+    const st = getMathState(id);
+    const total = st.correct + st.incorrect;
+    const accuracy = total > 0 ? st.correct / total : 0.5;
+    const weight = st.mastered ? 0.4 : 1 + (1 - accuracy) * 3;
+    return { id, weight };
+  });
+  const sum = weighted.reduce((s, w) => s + w.weight, 0);
+  let r = Math.random() * sum;
+  for (const w of weighted) {
+    r -= w.weight;
+    if (r <= 0) return w.id;
+  }
+  return weighted[0].id;
+}
 
-  // Part 5: Word Problems (Addition)
-  { id: 19, question: "Emma has 3 apples. She gets 2 more. How many apples does she have now?", options: ["4", "5", "6", "7"], answerIndex: 1 },
-  { id: 20, question: "Liam has 4 toy cars. His friend gives him 3 more. How many cars does he have?", options: ["6", "7", "8", "9"], answerIndex: 1 },
-  { id: 21, question: "There are 5 birds on a tree. 2 more birds come. How many birds are there now?", options: ["6", "7", "8", "9"], answerIndex: 1 },
-
-  // Part 6: Word Problems (Subtraction)
-  { id: 22, question: "Noah has 6 cookies. He eats 2. How many cookies are left?", options: ["3", "4", "5", "6"], answerIndex: 1 },
-  { id: 23, question: "Ava has 9 balloons. 4 fly away. How many balloons does she have now?", options: ["4", "5", "6", "7"], answerIndex: 1 },
-  { id: 24, question: "There are 10 fish in a tank. 3 swim away. How many are left?", options: ["6", "7", "8", "9"], answerIndex: 1 },
-
-  // Part 7: Mixed Thinking
-  { id: 25, question: "Mia has 2 red crayons and 5 blue crayons. How many crayons does she have?", options: ["6", "7", "8", "9"], answerIndex: 1 },
-  { id: 26, question: "Ben had 8 candies. He gave 3 to his friend. How many candies does he have left?", options: ["4", "5", "6", "7"], answerIndex: 1 },
-  { id: 27, question: "There are 4 cats and 4 dogs. How many animals are there in total?", options: ["6", "7", "8", "9"], answerIndex: 2 },
-
-  // Optional Challenge
-  { id: 28, question: "What is 10 + 0?", options: ["0", "1", "10", "100"], answerIndex: 2 },
-  { id: 29, question: "What is 10 - 10?", options: ["0", "1", "10", "20"], answerIndex: 0 },
-  { id: 30, question: "Fill in: ___ + 3 = 7", options: ["2", "3", "4", "5"], answerIndex: 2 }
-];
+let currentSkillId = null;
 
 function showQuestionModal() {
-  const q = SAMPLE_QUESTIONS[Math.floor(Math.random() * SAMPLE_QUESTIONS.length)];
-  document.getElementById('question-text').textContent = q.question;
+  if (!localUserConfig) return;
+  const skillId = pickSkillId();
+  if (!skillId) return;
+  currentSkillId = skillId;
+  const skill = MATH_SKILLS[skillId];
+  const q = skill.generate();
+
+  const titleEl = document.querySelector('#question-modal h2');
+  if (titleEl) titleEl.textContent = `${skill.name} · Grade ${skill.grade}`;
+
+  document.getElementById('question-text').innerHTML = q.question.replace(/\n/g, '<br/>');
   const grid = document.getElementById('options-grid');
   grid.innerHTML = '';
   q.options.forEach((opt, index) => {
-    const btn = document.createElement('button'); btn.className = 'option-btn'; btn.textContent = opt;
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
     btn.onclick = () => {
-      if (index === q.answerIndex) {
-        // Correct - Tell server to grant reward
-        socket.emit('interact', { type: 'answer', questionId: q.id, selectedIndex: index });
-
-        // Hide modals proactively on correct answer to clear screen
+      const correct = index === q.answerIndex;
+      const st = getMathState(skillId);
+      if (correct) {
+        st.correct++; st.streak++;
+        if (st.streak >= 5) st.mastered = true;
+        socket.emit('interact', { type: 'answer', skillId, correct: true });
         document.getElementById('low-energy-modal').classList.add('hidden');
         document.getElementById('out-of-energy-modal').classList.add('hidden');
       } else {
-        // Incorrect
+        st.incorrect++; st.streak = 0;
+        socket.emit('interact', { type: 'answer', skillId, correct: false });
         const toast = document.getElementById('feedback-toast');
-        toast.textContent = 'Incorrect!';
+        toast.textContent = `Incorrect — ${skill.name}`;
         toast.style.backgroundColor = 'var(--accent-danger)';
-        toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000);
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
       }
       document.getElementById('question-modal').classList.add('hidden');
       canvas.focus();

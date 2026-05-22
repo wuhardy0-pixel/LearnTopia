@@ -97,10 +97,12 @@ io.on('connection', (socket) => {
     if (!username || !password) return socket.emit('authError', 'Invalid');
     if (users[username]) return socket.emit('authError', 'Exists');
     users[username] = {
-      password, locked: false, 
+      password, locked: false,
       inventory: { coins: 0, bait: 5, fishes: [], vipTickets: 0, legendTickets: 0 },
       equipment: { rodLevel: 1, backpackLevel: 1 },
-      cosmetics: { unlockedSkins: ['#ffffff'], unlockedTrails: ['none'], activeSkin: '#ffffff', activeTrail: 'none' }
+      cosmetics: { unlockedSkins: ['#ffffff'], unlockedTrails: ['none'], activeSkin: '#ffffff', activeTrail: 'none' },
+      mathProgress: {},
+      activeGrade: 'K'
     };
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: users[username] });
@@ -109,6 +111,8 @@ io.on('connection', (socket) => {
   socket.on('login', ({ username, password }) => {
     const u = users[username];
     if (!u || u.password !== password) return socket.emit('authError', 'Invalid');
+    if (!u.mathProgress) u.mathProgress = {};
+    if (!u.activeGrade) u.activeGrade = 'K';
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: u });
   });
@@ -333,17 +337,35 @@ io.on('connection', (socket) => {
     if (!player || !user) return;
 
     if (actionData.type === 'answer') {
-      let reward = game.options.rewardVal;
-      if (game.mode === 'fishtopia') {
-        user.inventory.bait += parseInt(reward);
-        socket.emit('toast', { msg: `Correct! +${reward} Bait🪱`, success: true });
+      // Track adaptive math progress per skill
+      if (actionData.skillId) {
+        if (!user.mathProgress) user.mathProgress = {};
+        if (!user.mathProgress[actionData.skillId]) {
+          user.mathProgress[actionData.skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false };
+        }
+        const ms = user.mathProgress[actionData.skillId];
+        if (actionData.correct) {
+          ms.correct++; ms.streak++;
+          if (ms.streak >= 5) ms.mastered = true;
+        } else {
+          ms.incorrect++; ms.streak = 0;
+        }
         socket.emit('authSuccess', { username: sMap.username, data: user });
-      } else if (game.mode === 'dontlookdown' || game.mode === 'onewayout' || game.mode === 'coredefender') {
-        player.energy += parseInt(reward);
-        socket.emit('toast', { msg: `Correct! +${reward} Energy ⚡`, success: true });
-      } else if (game.mode === 'blastball') {
-        player.energy += parseInt(reward);
-        socket.emit('toast', { msg: `Correct! +${reward} Blasts 🔫`, success: true });
+      }
+
+      if (actionData.correct) {
+        let reward = game.options.rewardVal;
+        if (game.mode === 'fishtopia') {
+          user.inventory.bait += parseInt(reward);
+          socket.emit('toast', { msg: `Correct! +${reward} Bait🪱`, success: true });
+          socket.emit('authSuccess', { username: sMap.username, data: user });
+        } else if (game.mode === 'dontlookdown' || game.mode === 'onewayout' || game.mode === 'coredefender') {
+          player.energy += parseInt(reward);
+          socket.emit('toast', { msg: `Correct! +${reward} Energy ⚡`, success: true });
+        } else if (game.mode === 'blastball') {
+          player.energy += parseInt(reward);
+          socket.emit('toast', { msg: `Correct! +${reward} Blasts 🔫`, success: true });
+        }
       }
     }
 
@@ -400,6 +422,28 @@ io.on('connection', (socket) => {
     }
 
     // Removed obsolete Super Smash Blast logic
+
+    if (actionData.type === 'superBlast' && game.mode === 'blastball' && game.ball && !game.ball.scored) {
+      const cost = 15;
+      const range = 200;
+      const dx = game.ball.x - player.x;
+      const dy = game.ball.y - player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > range) {
+        socket.emit('toast', { msg: 'Get closer to the ball!', success: false });
+      } else if (player.energy < cost) {
+        socket.emit('toast', { msg: 'Need 15 Blasts for Super Blast!', success: false });
+      } else {
+        player.energy -= cost;
+        // Send ball flying away from the player
+        const angle = dist > 0 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+        const speed = 55;
+        game.ball.vx = Math.cos(angle) * speed;
+        game.ball.vy = Math.sin(angle) * speed;
+        game.ball.lastTouchedBy = socket.id;
+        io.to(sMap.code).emit('blastEffect', { x: game.ball.x, y: game.ball.y, radius: 250 });
+      }
+    }
 
     if (actionData.type === 'shoot' && (game.mode === 'onewayout' || game.mode === 'coredefender' || game.mode === 'blastball')) {
       let cost = 10;

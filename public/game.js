@@ -933,241 +933,31 @@ function updateHUD() {
 }
 
 // =========================================================
-// Adaptive Math Assessment Engine
+// Adaptive Math Assessment — flow controller
+// (Skill registry, MATH helpers, and GRADE_ORDER live in math-skills.js)
 // =========================================================
-const MATH = {
-  rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; },
-  shuffle(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  },
-  distractors(target, count, min, max) {
-    const out = [];
-    const tried = new Set([target]);
-    let safety = 60;
-    while (out.length < count && safety-- > 0) {
-      const offset = (Math.random() > 0.5 ? 1 : -1) * (1 + Math.floor(Math.random() * 3));
-      let cand = target + offset;
-      if (cand < min || cand > max || tried.has(cand)) cand = MATH.rand(min, max);
-      if (!tried.has(cand)) { tried.add(cand); out.push(cand); }
-    }
-    while (out.length < count) {
-      const cand = MATH.rand(min, max);
-      if (!tried.has(cand)) { tried.add(cand); out.push(cand); }
-      else if (tried.size > max - min + 1) break;
-    }
-    return out;
-  },
-  mc(answer, distractorPool) {
-    const all = MATH.shuffle([answer, ...distractorPool]).map(String);
-    return { options: all, answerIndex: all.indexOf(String(answer)) };
-  }
-};
-
-const MATH_SKILLS = {
-  // ============== KINDERGARTEN ==============
-  'k-count-objects': {
-    grade: 'K', name: 'Counting Objects',
-    generate() {
-      const n = MATH.rand(1, 10);
-      const emoji = ['🍎', '⭐', '🐠', '🪙', '🎈', '🐶', '🌸'][MATH.rand(0, 6)];
-      return {
-        question: `How many ${emoji}?\n${emoji.repeat(n)}`,
-        ...MATH.mc(n, MATH.distractors(n, 3, Math.max(0, n - 3), n + 3))
-      };
-    }
-  },
-  'k-count-forward': {
-    grade: 'K', name: 'Count Forward',
-    generate() {
-      const start = MATH.rand(1, 19);
-      const next = start + 1;
-      return {
-        question: `What number comes after ${start}?`,
-        ...MATH.mc(next, MATH.distractors(next, 3, Math.max(0, next - 3), next + 3))
-      };
-    }
-  },
-  'k-count-backward': {
-    grade: 'K', name: 'Count Backward',
-    generate() {
-      const start = MATH.rand(2, 20);
-      const prev = start - 1;
-      return {
-        question: `What number comes before ${start}?`,
-        ...MATH.mc(prev, MATH.distractors(prev, 3, Math.max(0, prev - 3), prev + 3))
-      };
-    }
-  },
-  'k-compare-numbers': {
-    grade: 'K', name: 'Comparing Numbers',
-    generate() {
-      let a = MATH.rand(1, 10);
-      let b = MATH.rand(1, 10);
-      while (b === a) b = MATH.rand(1, 10);
-      const bigger = Math.max(a, b);
-      const options = [String(a), String(b), 'They are equal'];
-      return {
-        question: `Which is bigger: ${a} or ${b}?`,
-        options,
-        answerIndex: options.indexOf(String(bigger))
-      };
-    }
-  },
-  'k-compare-symbol': {
-    grade: 'K', name: 'Greater / Less Than',
-    generate() {
-      const a = MATH.rand(1, 10);
-      const b = MATH.rand(1, 10);
-      const correct = a > b ? '>' : a < b ? '<' : '=';
-      const opts = ['>', '<', '='];
-      return { question: `${a} ___ ${b}`, options: opts, answerIndex: opts.indexOf(correct) };
-    }
-  },
-  'k-add-within-5': {
-    grade: 'K', name: 'Addition within 5',
-    generate() {
-      const a = MATH.rand(0, 4);
-      const b = MATH.rand(0, 5 - a);
-      const ans = a + b;
-      return { question: `${a} + ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 6)) };
-    }
-  },
-  'k-add-within-10': {
-    grade: 'K', name: 'Addition within 10',
-    generate() {
-      const a = MATH.rand(1, 9);
-      const b = MATH.rand(1, 10 - a);
-      const ans = a + b;
-      return { question: `${a} + ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12)) };
-    }
-  },
-  'k-sub-within-5': {
-    grade: 'K', name: 'Subtraction within 5',
-    generate() {
-      const a = MATH.rand(1, 5);
-      const b = MATH.rand(0, a);
-      const ans = a - b;
-      return { question: `${a} - ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 6)) };
-    }
-  },
-  'k-sub-within-10': {
-    grade: 'K', name: 'Subtraction within 10',
-    generate() {
-      const a = MATH.rand(2, 10);
-      const b = MATH.rand(0, a);
-      const ans = a - b;
-      return { question: `${a} - ${b} = ?`, ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12)) };
-    }
-  },
-  'k-make-10': {
-    grade: 'K', name: 'Make 10',
-    generate() {
-      const a = MATH.rand(1, 9);
-      const missing = 10 - a;
-      return { question: `${a} + ___ = 10`, ...MATH.mc(missing, MATH.distractors(missing, 3, 0, 12)) };
-    }
-  },
-  'k-decompose': {
-    grade: 'K', name: 'Number Bonds',
-    generate() {
-      const total = MATH.rand(3, 10);
-      const part = MATH.rand(1, total - 1);
-      const missing = total - part;
-      return { question: `${total} = ${part} + ___`, ...MATH.mc(missing, MATH.distractors(missing, 3, 0, total + 2)) };
-    }
-  },
-  'k-word-add': {
-    grade: 'K', name: 'Word Problems: Add',
-    generate() {
-      const names = ['Emma', 'Liam', 'Ava', 'Noah', 'Mia', 'Ben'];
-      const items = [['apples', '🍎'], ['cars', '🚗'], ['stickers', '⭐'], ['cookies', '🍪']];
-      const n = names[MATH.rand(0, names.length - 1)];
-      const [item] = items[MATH.rand(0, items.length - 1)];
-      const a = MATH.rand(1, 6);
-      const b = MATH.rand(1, 10 - a);
-      const ans = a + b;
-      return {
-        question: `${n} has ${a} ${item}. ${n} gets ${b} more. How many ${item} now?`,
-        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12))
-      };
-    }
-  },
-  'k-word-sub': {
-    grade: 'K', name: 'Word Problems: Subtract',
-    generate() {
-      const names = ['Emma', 'Liam', 'Ava', 'Noah', 'Mia', 'Ben'];
-      const items = [['cookies', '🍪'], ['balloons', '🎈'], ['fish', '🐠'], ['blocks', '🧱']];
-      const n = names[MATH.rand(0, names.length - 1)];
-      const [item] = items[MATH.rand(0, items.length - 1)];
-      const a = MATH.rand(3, 10);
-      const b = MATH.rand(1, a);
-      const ans = a - b;
-      return {
-        question: `${n} has ${a} ${item}. ${b} are gone. How many ${item} left?`,
-        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, 12))
-      };
-    }
-  },
-  'k-shapes': {
-    grade: 'K', name: 'Shapes',
-    generate() {
-      const shapes = [
-        { name: 'triangle', sides: 3, emoji: '🔺' },
-        { name: 'square', sides: 4, emoji: '🟦' },
-        { name: 'pentagon', sides: 5, emoji: '⬟' },
-        { name: 'hexagon', sides: 6, emoji: '⬡' },
-        { name: 'circle', sides: 0, emoji: '⚪' }
-      ];
-      const pick = shapes[MATH.rand(0, shapes.length - 1)];
-      const opts = MATH.shuffle([0, 3, 4, 5, 6]).slice(0, 4);
-      if (!opts.includes(pick.sides)) opts[0] = pick.sides;
-      const finalOpts = MATH.shuffle(opts).map(String);
-      return {
-        question: `How many sides does a ${pick.name} ${pick.emoji} have?`,
-        options: finalOpts,
-        answerIndex: finalOpts.indexOf(String(pick.sides))
-      };
-    }
-  },
-  'k-patterns': {
-    grade: 'K', name: 'Patterns',
-    generate() {
-      const pairs = [['🔴', '🔵'], ['⭐', '🌙'], ['🍎', '🍌'], ['🐶', '🐱'], ['🟥', '🟩']];
-      const [a, b] = pairs[MATH.rand(0, pairs.length - 1)];
-      const seq = a + b + a + b + a;
-      const optionSet = MATH.shuffle([a, b, '⬛', '❓']);
-      return {
-        question: `What comes next?\n${seq} ___`,
-        options: optionSet,
-        answerIndex: optionSet.indexOf(b)
-      };
-    }
-  }
-};
-
 function getMathState(skillId) {
   if (!localUserConfig.mathProgress) localUserConfig.mathProgress = {};
   if (!localUserConfig.mathProgress[skillId]) {
-    localUserConfig.mathProgress[skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false };
+    localUserConfig.mathProgress[skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false, introSeen: false };
   }
   return localUserConfig.mathProgress[skillId];
 }
 
+function getGradeCompleted() {
+  if (!localUserConfig.gradeCompleted) localUserConfig.gradeCompleted = {};
+  return localUserConfig.gradeCompleted;
+}
+
 function pickSkillId() {
   const grade = localUserConfig.activeGrade || 'K';
-  const skills = Object.entries(MATH_SKILLS).filter(([, s]) => s.grade === grade);
-  if (!skills.length) return null;
-  // Weight unmastered skills higher; weak skills get up to ~4x weight
-  const weighted = skills.map(([id]) => {
+  const ids = MATH_skillsForGrade(grade);
+  if (!ids.length) return null;
+  const weighted = ids.map(id => {
     const st = getMathState(id);
     const total = st.correct + st.incorrect;
     const accuracy = total > 0 ? st.correct / total : 0.5;
-    const weight = st.mastered ? 0.4 : 1 + (1 - accuracy) * 3;
+    const weight = st.mastered ? 0.3 : 1 + (1 - accuracy) * 3;
     return { id, weight };
   });
   const sum = weighted.reduce((s, w) => s + w.weight, 0);
@@ -1179,18 +969,59 @@ function pickSkillId() {
   return weighted[0].id;
 }
 
+// ----- Mastery course state -----
+let masteryCourse = null; // { grade, pool, remaining, score, total }
 let currentSkillId = null;
+let currentQuestion = null;
+
+function startMasteryCourse(grade) {
+  masteryCourse = {
+    grade,
+    pool: MATH_skillsForGrade(grade),
+    remaining: 10, score: 0, total: 10
+  };
+}
 
 function showQuestionModal() {
   if (!localUserConfig) return;
+
+  // If a mastery course is active, present the next question from its pool.
+  if (masteryCourse) {
+    const id = masteryCourse.pool[Math.floor(Math.random() * masteryCourse.pool.length)];
+    presentSkillQuestion(id, { masteryMode: true });
+    return;
+  }
+
+  // If every skill in current grade is mastered (and course not completed), offer the Mastery Course.
+  const grade = localUserConfig.activeGrade || 'K';
+  const gc = getGradeCompleted();
+  if (!gc[grade] && MATH_allMastered(localUserConfig.mathProgress || {}, grade)) {
+    showMasteryModal(grade);
+    return;
+  }
+
   const skillId = pickSkillId();
   if (!skillId) return;
-  currentSkillId = skillId;
-  const skill = MATH_SKILLS[skillId];
-  const q = skill.generate();
+  const st = getMathState(skillId);
+  if (!st.introSeen) { showIntroModal(skillId); return; }
+  presentSkillQuestion(skillId, {});
+}
 
-  const titleEl = document.querySelector('#question-modal h2');
-  if (titleEl) titleEl.textContent = `${skill.name} · Grade ${skill.grade}`;
+function presentSkillQuestion(skillId, opts) {
+  const skill = MATH_SKILLS[skillId];
+  if (!skill) return;
+  const q = skill.generate();
+  currentSkillId = skillId;
+  currentQuestion = q;
+
+  document.querySelector('#question-modal h2').textContent = `${skill.name} · Grade ${skill.grade}`;
+  const prog = document.getElementById('question-progress');
+  if (opts.masteryMode && masteryCourse) {
+    prog.textContent = `🎓 Mastery Course · Q ${masteryCourse.total - masteryCourse.remaining + 1}/${masteryCourse.total} · Score ${masteryCourse.score}`;
+  } else {
+    const st = getMathState(skillId);
+    prog.textContent = `Streak ${st.streak}/5 to master · ${st.correct} ✓ / ${st.incorrect} ✗`;
+  }
 
   document.getElementById('question-text').innerHTML = q.question.replace(/\n/g, '<br/>');
   const grid = document.getElementById('options-grid');
@@ -1199,30 +1030,132 @@ function showQuestionModal() {
     const btn = document.createElement('button');
     btn.className = 'option-btn';
     btn.textContent = opt;
-    btn.onclick = () => {
-      const correct = index === q.answerIndex;
-      const st = getMathState(skillId);
-      if (correct) {
-        st.correct++; st.streak++;
-        if (st.streak >= 5) st.mastered = true;
-        socket.emit('interact', { type: 'answer', skillId, correct: true });
-        document.getElementById('low-energy-modal').classList.add('hidden');
-        document.getElementById('out-of-energy-modal').classList.add('hidden');
-      } else {
-        st.incorrect++; st.streak = 0;
-        socket.emit('interact', { type: 'answer', skillId, correct: false });
-        const toast = document.getElementById('feedback-toast');
-        toast.textContent = `Incorrect — ${skill.name}`;
-        toast.style.backgroundColor = 'var(--accent-danger)';
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
-      }
-      document.getElementById('question-modal').classList.add('hidden');
-      canvas.focus();
-    };
+    btn.onclick = () => onAnswer(skillId, q, index, opts);
     grid.appendChild(btn);
   });
   document.getElementById('question-modal').classList.remove('hidden');
+}
+
+function onAnswer(skillId, q, index, opts) {
+  const correct = index === q.answerIndex;
+  document.getElementById('question-modal').classList.add('hidden');
+
+  if (opts.masteryMode && masteryCourse) {
+    if (correct) masteryCourse.score++;
+    masteryCourse.remaining--;
+    socket.emit('interact', { type: 'answer', skillId, correct, masteryGrade: masteryCourse.grade });
+    if (!correct) showExplainModal(skillId, q, proceedMastery);
+    else proceedMastery();
+    return;
+  }
+
+  const st = getMathState(skillId);
+  if (correct) {
+    st.correct++; st.streak++;
+    if (st.streak >= 5) st.mastered = true;
+    socket.emit('interact', { type: 'answer', skillId, correct: true });
+    document.getElementById('low-energy-modal').classList.add('hidden');
+    document.getElementById('out-of-energy-modal').classList.add('hidden');
+    canvas.focus();
+    const grade = localUserConfig.activeGrade || 'K';
+    const gc = getGradeCompleted();
+    if (!gc[grade] && MATH_allMastered(localUserConfig.mathProgress, grade)) {
+      setTimeout(() => showMasteryModal(grade), 400);
+    }
+  } else {
+    st.incorrect++; st.streak = 0;
+    socket.emit('interact', { type: 'answer', skillId, correct: false });
+    showExplainModal(skillId, q, () => canvas.focus());
+  }
+}
+
+function showIntroModal(skillId) {
+  const skill = MATH_SKILLS[skillId];
+  document.getElementById('intro-title').textContent = `${skill.name} · Grade ${skill.grade}`;
+  document.getElementById('intro-body').textContent = skill.intro || "Let's try a question!";
+  const modal = document.getElementById('intro-modal');
+  modal.classList.remove('hidden');
+  document.getElementById('btn-intro-ok').onclick = () => {
+    modal.classList.add('hidden');
+    const st = getMathState(skillId);
+    st.introSeen = true;
+    socket.emit('mathIntroSeen', { skillId });
+    presentSkillQuestion(skillId, {});
+  };
+}
+
+function showExplainModal(skillId, q, after) {
+  const skill = MATH_SKILLS[skillId];
+  document.getElementById('explain-skill').textContent = skill.name;
+  document.getElementById('explain-question').innerHTML = (q.question || '').replace(/\n/g, '<br/>');
+  document.getElementById('explain-body').textContent = q.explain || `The correct answer was: ${q.options[q.answerIndex]}.`;
+  const modal = document.getElementById('explain-modal');
+  modal.classList.remove('hidden');
+  document.getElementById('btn-explain-ok').onclick = () => {
+    modal.classList.add('hidden');
+    if (after) after();
+  };
+}
+
+function showMasteryModal(grade) {
+  const modal = document.getElementById('mastery-modal');
+  document.getElementById('mastery-stage-intro').classList.remove('hidden');
+  document.getElementById('mastery-stage-result').classList.add('hidden');
+  document.getElementById('mastery-title').textContent = `Grade ${grade} Mastery Course`;
+  document.getElementById('mastery-body').textContent =
+    `Amazing — you've mastered every skill in Grade ${grade}!\n\n` +
+    `One last challenge: 10 mixed questions across everything you've learned. Score 8+ to graduate to the next grade.`;
+  modal.classList.remove('hidden');
+  document.getElementById('btn-mastery-start').onclick = () => {
+    modal.classList.add('hidden');
+    startMasteryCourse(grade);
+    showQuestionModal();
+  };
+  document.getElementById('btn-mastery-later').onclick = () => {
+    modal.classList.add('hidden');
+    canvas.focus();
+  };
+}
+
+function proceedMastery() {
+  if (!masteryCourse) return;
+  if (masteryCourse.remaining > 0) {
+    setTimeout(() => showQuestionModal(), 250);
+    return;
+  }
+  const passed = masteryCourse.score >= 8;
+  const idx = GRADE_ORDER.indexOf(masteryCourse.grade);
+  const nextGrade = passed && idx >= 0 && idx + 1 < GRADE_ORDER.length ? GRADE_ORDER[idx + 1] : null;
+  const courseSnapshot = { ...masteryCourse };
+  if (passed) {
+    socket.emit('mathGradeCompleted', { grade: masteryCourse.grade, nextGrade });
+    const gc = getGradeCompleted();
+    gc[masteryCourse.grade] = true;
+    if (nextGrade) localUserConfig.activeGrade = nextGrade;
+  }
+  masteryCourse = null;
+  showMasteryResult(courseSnapshot, nextGrade, passed);
+}
+
+function showMasteryResult(course, nextGrade, passed) {
+  const modal = document.getElementById('mastery-modal');
+  document.getElementById('mastery-stage-intro').classList.add('hidden');
+  document.getElementById('mastery-stage-result').classList.remove('hidden');
+  document.getElementById('mastery-result-emoji').textContent = passed ? '🏆' : '💪';
+  document.getElementById('mastery-result-title').textContent = passed
+    ? `Grade ${course.grade} Graduated!`
+    : `Almost — keep practicing!`;
+  let body = `Score: ${course.score} / ${course.total}\n\n`;
+  if (passed) body += nextGrade
+    ? `Welcome to Grade ${nextGrade} — new skills unlocked!`
+    : `You've finished the highest grade. Math champion!`;
+  else body += `Need 8+ to graduate. Keep practicing the weaker skills, then try the Mastery Course again.`;
+  document.getElementById('mastery-result-body').textContent = body;
+  modal.classList.remove('hidden');
+  document.getElementById('btn-mastery-done').onclick = () => {
+    modal.classList.add('hidden');
+    canvas.focus();
+  };
 }
 
 // Gear & Ticket Shop Logic

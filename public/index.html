@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" defer></script>
+  <script src="math-skills.js" defer></script>
   <script src="game.js" defer></script>
 </head>
 <body>
@@ -260,8 +261,49 @@
     <div id="question-modal" class="modal-overlay hidden">
       <div class="modal-content glass-panel">
         <h2>Trivia Time: Math!</h2>
+        <div id="question-progress" class="mt" style="font-size:0.85rem; opacity:0.8;"></div>
         <h3 id="question-text" class="mt">Loading question...</h3>
         <div id="options-grid" class="options-grid mt"></div>
+      </div>
+    </div>
+
+    <!-- New-skill Intro Modal (teacher walks you through) -->
+    <div id="intro-modal" class="modal-overlay hidden" style="z-index:1100;">
+      <div class="modal-content glass-panel" style="max-width:520px;">
+        <div style="font-size:0.85rem; opacity:0.7; letter-spacing:0.05em; text-transform:uppercase;">New Subject</div>
+        <h2 id="intro-title" class="mt">Skill Name</h2>
+        <p id="intro-body" class="mt" style="white-space:pre-wrap; line-height:1.5; text-align:left;"></p>
+        <button id="btn-intro-ok" class="btn primary full-width mt">Got it — start practice!</button>
+      </div>
+    </div>
+
+    <!-- Wrong-Answer Explanation Modal (teacher walks you through this question) -->
+    <div id="explain-modal" class="modal-overlay hidden" style="z-index:1100;">
+      <div class="modal-content glass-panel" style="max-width:520px; border:2px solid #f59e0b;">
+        <div style="font-size:0.85rem; color:#f59e0b; font-weight:bold; letter-spacing:0.05em;">LET'S WALK THROUGH IT</div>
+        <h2 class="mt" id="explain-skill">Skill</h2>
+        <h3 class="mt" id="explain-question" style="opacity:0.85;"></h3>
+        <p id="explain-body" class="mt" style="white-space:pre-wrap; line-height:1.5; text-align:left; background:rgba(0,0,0,0.15); padding:12px; border-radius:8px;"></p>
+        <button id="btn-explain-ok" class="btn primary full-width mt">Try another!</button>
+      </div>
+    </div>
+
+    <!-- Mastery Course Modal (end of grade) -->
+    <div id="mastery-modal" class="modal-overlay hidden" style="z-index:1100;">
+      <div class="modal-content glass-panel" style="max-width:520px; text-align:center;">
+        <div id="mastery-stage-intro">
+          <div style="font-size:3rem;">🎓</div>
+          <h2 class="mt" id="mastery-title">Mastery Course</h2>
+          <p id="mastery-body" class="mt" style="line-height:1.5;"></p>
+          <button id="btn-mastery-start" class="btn primary full-width mt">Begin the Mastery Course</button>
+          <button id="btn-mastery-later" class="btn secondary full-width mt">Later</button>
+        </div>
+        <div id="mastery-stage-result" class="hidden">
+          <div id="mastery-result-emoji" style="font-size:3rem;">🏆</div>
+          <h2 class="mt" id="mastery-result-title">You did it!</h2>
+          <p id="mastery-result-body" class="mt" style="line-height:1.5;"></p>
+          <button id="btn-mastery-done" class="btn primary full-width mt">Continue</button>
+        </div>
       </div>
     </div>
 

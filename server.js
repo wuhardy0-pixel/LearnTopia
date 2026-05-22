@@ -102,6 +102,7 @@ io.on('connection', (socket) => {
       equipment: { rodLevel: 1, backpackLevel: 1 },
       cosmetics: { unlockedSkins: ['#ffffff'], unlockedTrails: ['none'], activeSkin: '#ffffff', activeTrail: 'none' },
       mathProgress: {},
+      gradeCompleted: {},
       activeGrade: 'K'
     };
     socketMap[socket.id] = { username, code: null };
@@ -112,9 +113,34 @@ io.on('connection', (socket) => {
     const u = users[username];
     if (!u || u.password !== password) return socket.emit('authError', 'Invalid');
     if (!u.mathProgress) u.mathProgress = {};
+    if (!u.gradeCompleted) u.gradeCompleted = {};
     if (!u.activeGrade) u.activeGrade = 'K';
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: u });
+  });
+
+  socket.on('mathIntroSeen', ({ skillId }) => {
+    const sMap = socketMap[socket.id];
+    if (!sMap || !sMap.username || !skillId) return;
+    const u = users[sMap.username];
+    if (!u) return;
+    if (!u.mathProgress) u.mathProgress = {};
+    if (!u.mathProgress[skillId]) {
+      u.mathProgress[skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false, introSeen: false };
+    }
+    u.mathProgress[skillId].introSeen = true;
+    socket.emit('authSuccess', { username: sMap.username, data: u });
+  });
+
+  socket.on('mathGradeCompleted', ({ grade, nextGrade }) => {
+    const sMap = socketMap[socket.id];
+    if (!sMap || !sMap.username || !grade) return;
+    const u = users[sMap.username];
+    if (!u) return;
+    if (!u.gradeCompleted) u.gradeCompleted = {};
+    u.gradeCompleted[grade] = true;
+    if (nextGrade) u.activeGrade = nextGrade;
+    socket.emit('authSuccess', { username: sMap.username, data: u });
   });
 
   socket.on('changeUsername', ({ newUsername }) => {
@@ -341,7 +367,7 @@ io.on('connection', (socket) => {
       if (actionData.skillId) {
         if (!user.mathProgress) user.mathProgress = {};
         if (!user.mathProgress[actionData.skillId]) {
-          user.mathProgress[actionData.skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false };
+          user.mathProgress[actionData.skillId] = { correct: 0, incorrect: 0, streak: 0, mastered: false, introSeen: false };
         }
         const ms = user.mathProgress[actionData.skillId];
         if (actionData.correct) {

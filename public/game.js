@@ -1014,7 +1014,7 @@ function presentSkillQuestion(skillId, opts) {
   currentSkillId = skillId;
   currentQuestion = q;
 
-  document.querySelector('#question-modal h2').textContent = `${skill.name} · Grade ${skill.grade}`;
+  document.querySelector('#question-modal h2').textContent = `${skill.name} · ${MATH_gradeLabel(skill.grade)}`;
   const prog = document.getElementById('question-progress');
   if (opts.masteryMode && masteryCourse) {
     prog.textContent = `🎓 Mastery Course · Q ${masteryCourse.total - masteryCourse.remaining + 1}/${masteryCourse.total} · Score ${masteryCourse.score}`;
@@ -1071,7 +1071,7 @@ function onAnswer(skillId, q, index, opts) {
 
 function showIntroModal(skillId) {
   const skill = MATH_SKILLS[skillId];
-  document.getElementById('intro-title').textContent = `${skill.name} · Grade ${skill.grade}`;
+  document.getElementById('intro-title').textContent = `${skill.name} · ${MATH_gradeLabel(skill.grade)}`;
   document.getElementById('intro-body').textContent = skill.intro || "Let's try a question!";
   const modal = document.getElementById('intro-modal');
   modal.classList.remove('hidden');
@@ -1101,10 +1101,10 @@ function showMasteryModal(grade) {
   const modal = document.getElementById('mastery-modal');
   document.getElementById('mastery-stage-intro').classList.remove('hidden');
   document.getElementById('mastery-stage-result').classList.add('hidden');
-  document.getElementById('mastery-title').textContent = `Grade ${grade} Mastery Course`;
+  document.getElementById('mastery-title').textContent = `${MATH_gradeLabel(grade)} Mastery Course`;
   document.getElementById('mastery-body').textContent =
-    `Amazing — you've mastered every skill in Grade ${grade}!\n\n` +
-    `One last challenge: 10 mixed questions across everything you've learned. Score 8+ to graduate to the next grade.`;
+    `Amazing — you've mastered every skill in ${MATH_gradeLabel(grade)}!\n\n` +
+    `One last challenge: 10 mixed questions across everything you've learned. Score 8+ to graduate to the next level.`;
   modal.classList.remove('hidden');
   document.getElementById('btn-mastery-start').onclick = () => {
     modal.classList.add('hidden');
@@ -1143,12 +1143,12 @@ function showMasteryResult(course, nextGrade, passed) {
   document.getElementById('mastery-stage-result').classList.remove('hidden');
   document.getElementById('mastery-result-emoji').textContent = passed ? '🏆' : '💪';
   document.getElementById('mastery-result-title').textContent = passed
-    ? `Grade ${course.grade} Graduated!`
+    ? `${MATH_gradeLabel(course.grade)} Graduated!`
     : `Almost — keep practicing!`;
   let body = `Score: ${course.score} / ${course.total}\n\n`;
   if (passed) body += nextGrade
-    ? `Welcome to Grade ${nextGrade} — new skills unlocked!`
-    : `You've finished the highest grade. Math champion!`;
+    ? `Welcome to ${MATH_gradeLabel(nextGrade)} — new skills unlocked!`
+    : `You've finished the highest level. Math champion!`;
   else body += `Need 8+ to graduate. Keep practicing the weaker skills, then try the Mastery Course again.`;
   document.getElementById('mastery-result-body').textContent = body;
   modal.classList.remove('hidden');

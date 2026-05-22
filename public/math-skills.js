@@ -1158,12 +1158,926 @@ const MATH_SKILLS = {
         ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
       };
     }
+  },
+
+  // ============================================================
+  // GRADE 6
+  // ============================================================
+  '6-ratios': {
+    grade: '6', name: 'Ratios',
+    intro:
+      `A RATIO compares two quantities.\n` +
+      `4 dogs to 6 cats is written 4:6.\n\n` +
+      `Simplify by dividing both numbers by their greatest common factor.\n` +
+      `4:6 → divide by 2 → 2:3.`,
+    generate() {
+      const k = MATH.rand(2, 5);
+      const a = MATH.rand(2, 5), b = MATH.rand(2, 5);
+      const A = a * k, B = b * k;
+      const ans = `${a}:${b}`;
+      const opts = MATH.shuffle([`${a}:${b}`, `${A}:${B}`, `${b}:${a}`, `${a + 1}:${b}`]);
+      return {
+        question: `Simplify the ratio ${A} : ${B}.`,
+        explain: `Both ${A} and ${B} divide by ${k}. ${A}/${k}=${a}, ${B}/${k}=${b}. So ${A}:${B} = ${a}:${b}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  '6-percent-of': {
+    grade: '6', name: 'Percent of a Number',
+    intro:
+      `"Percent" means "per hundred". 25% = 25/100 = 0.25.\n\n` +
+      `To find a percent of a number, MULTIPLY.\n` +
+      `25% of 80 → 0.25 × 80 = 20.\n\n` +
+      `Tricks: 10% is the number ÷ 10. 50% is ÷ 2. 25% is ÷ 4.`,
+    generate() {
+      const pct = [10, 20, 25, 50, 75][MATH.rand(0, 4)];
+      const n = MATH.rand(2, 10) * 10;
+      const ans = Math.round(pct * n / 100);
+      return {
+        question: `${pct}% of ${n} = ?`,
+        explain: `${pct}% = ${pct}/100 = ${pct/100}.  ${pct/100} × ${n} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, n))
+      };
+    }
+  },
+
+  '6-int-add': {
+    grade: '6', name: 'Adding Integers',
+    intro:
+      `Integers include negative numbers. On a number line, negatives are LEFT of 0.\n\n` +
+      `Same signs → add and keep the sign.    −5 + −3 = −8.\n` +
+      `Different signs → subtract and keep the sign of the BIGGER number.\n` +
+      `   −7 + 3 = −4   (since 7 > 3 and 7 is negative).`,
+    generate() {
+      const a = MATH.rand(-10, 10), b = MATH.rand(-10, 10);
+      const ans = a + b;
+      return {
+        question: `${a} + ${b < 0 ? `(${b})` : b} = ?`,
+        explain: `Number line: start at ${a}, move ${b > 0 ? `right ${b}` : `left ${Math.abs(b)}`} → ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 5, ans + 5))
+      };
+    }
+  },
+
+  '6-int-sub': {
+    grade: '6', name: 'Subtracting Integers',
+    intro:
+      `Subtraction = ADD the OPPOSITE.\n\n` +
+      `   4 − (−2)   becomes   4 + 2 = 6.\n` +
+      `   −5 − 3     becomes   −5 + (−3) = −8.\n\n` +
+      `Trick: change minus-a-negative into plus-a-positive.`,
+    generate() {
+      const a = MATH.rand(-10, 10), b = MATH.rand(-10, 10);
+      const ans = a - b;
+      return {
+        question: `${a} − ${b < 0 ? `(${b})` : b} = ?`,
+        explain: `Add the opposite: ${a} − (${b}) = ${a} + (${-b}) = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 6, ans + 6))
+      };
+    }
+  },
+
+  '6-gcf': {
+    grade: '6', name: 'Greatest Common Factor',
+    intro:
+      `The GCF of two numbers is the biggest number that divides BOTH evenly.\n\n` +
+      `GCF(12, 18):\n` +
+      ` Factors of 12 = 1, 2, 3, 4, 6, 12\n` +
+      ` Factors of 18 = 1, 2, 3, 6, 9, 18\n` +
+      ` Largest shared = 6.\n\n` +
+      `Useful for simplifying fractions and ratios.`,
+    generate() {
+      const pairs = [[12, 18, 6], [8, 12, 4], [15, 20, 5], [16, 24, 8], [9, 12, 3], [20, 30, 10]];
+      const [a, b, ans] = pairs[MATH.rand(0, pairs.length - 1)];
+      return {
+        question: `GCF of ${a} and ${b} = ?`,
+        explain: `Both ${a} and ${b} divide evenly by ${ans}, and nothing larger does. GCF = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 1, Math.max(a, b)))
+      };
+    }
+  },
+
+  '6-eval-expr': {
+    grade: '6', name: 'Evaluating Expressions',
+    intro:
+      `Algebra uses LETTERS that stand for numbers.\n` +
+      `If we tell you what the letter equals, just SUBSTITUTE it in.\n\n` +
+      `Evaluate 4x + 2 when x = 3:\n` +
+      `   4(3) + 2 = 12 + 2 = 14.`,
+    generate() {
+      const x = MATH.rand(2, 9);
+      const c1 = MATH.rand(2, 6), c2 = MATH.rand(1, 9);
+      const ans = c1 * x + c2;
+      return {
+        question: `If x = ${x}, then ${c1}x + ${c2} = ?`,
+        explain: `${c1}x = ${c1} × ${x} = ${c1 * x}.\nThen ${c1 * x} + ${c2} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 10, ans + 10))
+      };
+    }
+  },
+
+  '6-coord-quadrant': {
+    grade: '6', name: 'Coordinate Plane Quadrants',
+    intro:
+      `The coordinate plane has 4 QUADRANTS, numbered I-IV counterclockwise.\n\n` +
+      `   II  |  I       Quadrant signs (x, y):\n` +
+      `  -----+-----        I:  (+, +)    II: (−, +)\n` +
+      `   III | IV         III: (−, −)    IV: (+, −)\n\n` +
+      `A point (3, −2) has positive x and negative y → Quadrant IV.`,
+    generate() {
+      const x = MATH.rand(1, 9) * (Math.random() > 0.5 ? 1 : -1);
+      const y = MATH.rand(1, 9) * (Math.random() > 0.5 ? 1 : -1);
+      const q = x > 0 && y > 0 ? 'I' : x < 0 && y > 0 ? 'II' : x < 0 && y < 0 ? 'III' : 'IV';
+      return {
+        question: `Which quadrant contains (${x}, ${y})?`,
+        explain: `x = ${x} (${x > 0 ? '+' : '−'}), y = ${y} (${y > 0 ? '+' : '−'}). That matches Quadrant ${q}.`,
+        options: ['I', 'II', 'III', 'IV'],
+        answerIndex: ['I', 'II', 'III', 'IV'].indexOf(q)
+      };
+    }
+  },
+
+  // ============================================================
+  // GRADE 7
+  // ============================================================
+  '7-proportions': {
+    grade: '7', name: 'Solving Proportions',
+    intro:
+      `A proportion says two ratios are equal.\n` +
+      `   a/b = c/d\n\n` +
+      `To find an unknown, CROSS-MULTIPLY:\n` +
+      `   3/4 = x/12  →  3 × 12 = 4x  →  36 = 4x  →  x = 9.`,
+    generate() {
+      const a = MATH.rand(2, 6), denomR = MATH.rand(2, 5);
+      const b = a * denomR;
+      const x = MATH.rand(2, 5);
+      const d = b * x / a;
+      const ans = a * x;
+      return {
+        question: `If ${a}/${b} = x/${d}, x = ?`,
+        explain: `Cross-multiply: ${a} × ${d} = ${b} × x → ${a*d} = ${b}x → x = ${a*d}/${b} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  '7-percent-change': {
+    grade: '7', name: 'Percent Change',
+    intro:
+      `% change = (new − old) / old × 100.\n\n` +
+      `50 → 60: change = 10, 10/50 = 0.2 = 20% INCREASE.\n` +
+      `60 → 45: drop of 15, 15/60 = 25% DECREASE.`,
+    generate() {
+      const old = MATH.rand(2, 10) * 10;
+      const pct = [10, 20, 25, 50][MATH.rand(0, 3)];
+      const increase = Math.random() > 0.5;
+      const change = old * pct / 100;
+      const neu = increase ? old + change : old - change;
+      return {
+        question: `A value changes from ${old} to ${neu}. What is the % change?`,
+        explain: `Change = ${Math.abs(neu - old)}.  ${Math.abs(neu - old)}/${old} = ${pct/100} = ${pct}% (${increase ? 'increase' : 'decrease'}).`,
+        options: [`${pct}%`, `${pct + 10}%`, `${Math.max(5, pct - 10)}%`, `${old}%`].map((v, i, a) => a.indexOf(v) === i ? v : v + '!').slice(0, 4),
+        get answerIndex() { return this.options.indexOf(`${pct}%`); }
+      };
+    }
+  },
+
+  '7-int-mult': {
+    grade: '7', name: 'Multiplying Integers',
+    intro:
+      `Sign rules for multiplying:\n` +
+      `   (+)(+) = +    (−)(−) = +\n` +
+      `   (+)(−) = −    (−)(+) = −\n\n` +
+      `Same signs → positive. Different signs → negative.\n` +
+      `(−4) × 5 = −20.   (−4) × (−5) = +20.`,
+    generate() {
+      const a = MATH.rand(-8, 8) || 1;
+      const b = MATH.rand(-8, 8) || 1;
+      const ans = a * b;
+      return {
+        question: `(${a}) × (${b}) = ?`,
+        explain: `Signs: ${(a < 0) === (b < 0) ? 'same → positive' : 'different → negative'}.\n${Math.abs(a)} × ${Math.abs(b)} = ${Math.abs(ans)}. Final: ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 10, ans + 10))
+      };
+    }
+  },
+
+  '7-int-div': {
+    grade: '7', name: 'Dividing Integers',
+    intro:
+      `Same sign rules as multiplication:\n` +
+      `   Same signs → positive.   Different signs → negative.\n\n` +
+      `(−18) ÷ (−3) = +6.   18 ÷ (−3) = −6.`,
+    generate() {
+      const b = MATH.rand(-8, 8) || 2;
+      const q = MATH.rand(-7, 7) || 1;
+      const a = b * q;
+      return {
+        question: `(${a}) ÷ (${b}) = ?`,
+        explain: `Signs: ${(a < 0) === (b < 0) ? 'same → positive' : 'different → negative'}.\n${Math.abs(a)} ÷ ${Math.abs(b)} = ${Math.abs(q)}. Final: ${q}.`,
+        ...MATH.mc(q, MATH.distractors(q, 3, q - 5, q + 5))
+      };
+    }
+  },
+
+  '7-two-step-eq': {
+    grade: '7', name: 'Two-Step Equations',
+    intro:
+      `Undo operations in REVERSE order — undo addition/subtraction first, then multiplication/division.\n\n` +
+      `2x + 3 = 11:\n` +
+      ` Step 1: subtract 3 from both sides: 2x = 8.\n` +
+      ` Step 2: divide both sides by 2: x = 4.\n` +
+      ` Check: 2(4) + 3 = 11 ✓`,
+    generate() {
+      const a = MATH.rand(2, 6);
+      const b = MATH.rand(1, 9);
+      const x = MATH.rand(2, 9);
+      const eq = a * x + b;
+      return {
+        question: `Solve: ${a}x + ${b} = ${eq}.  x = ?`,
+        explain: `Subtract ${b}: ${a}x = ${eq - b}.\nDivide by ${a}: x = ${(eq - b)}/${a} = ${x}.`,
+        ...MATH.mc(x, MATH.distractors(x, 3, 0, x * 2 + 2))
+      };
+    }
+  },
+
+  '7-probability': {
+    grade: '7', name: 'Basic Probability',
+    intro:
+      `Probability = number of favorable outcomes / total outcomes.\n\n` +
+      `Standard die has 6 sides. P(rolling a 4) = 1/6.\n` +
+      `P(rolling an even number) = 3/6 = 1/2.\n\n` +
+      `Always between 0 (impossible) and 1 (certain).`,
+    generate() {
+      const scenarios = [
+        { q: 'rolling a 6', fav: 1 },
+        { q: 'rolling an even number', fav: 3 },
+        { q: 'rolling greater than 4', fav: 2 },
+        { q: 'rolling less than 3', fav: 2 }
+      ];
+      const sc = scenarios[MATH.rand(0, scenarios.length - 1)];
+      const ans = `${sc.fav}/6`;
+      const opts = MATH.shuffle([ans, `6/${sc.fav}`, `${sc.fav + 1}/6`, `${sc.fav}/12`]);
+      return {
+        question: `On a 6-sided die, P(${sc.q}) = ?`,
+        explain: `${sc.fav} favorable outcome${sc.fav === 1 ? '' : 's'} out of 6 total. P = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  '7-circle-area': {
+    grade: '7', name: 'Area of a Circle',
+    intro:
+      `Area of a circle = π × r².  Use π ≈ 3.14.\n\n` +
+      `r = 3:  A = 3.14 × 3² = 3.14 × 9 ≈ 28.26.\n\n` +
+      `r is the RADIUS — from center to edge. Diameter = 2r.`,
+    generate() {
+      const r = MATH.rand(2, 8);
+      const ans = +(3.14 * r * r).toFixed(2);
+      const opts = MATH.shuffle([String(ans), String(+(2*3.14*r).toFixed(2)), String(+(3.14*r).toFixed(2)), String(r*r)]);
+      return {
+        question: `Area of a circle with radius ${r}? (use π ≈ 3.14)`,
+        explain: `A = π × r² = 3.14 × ${r}² = 3.14 × ${r*r} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(String(ans))
+      };
+    }
+  },
+
+  '7-circumference': {
+    grade: '7', name: 'Circumference',
+    intro:
+      `Circumference = distance AROUND a circle.\n` +
+      `   C = 2 × π × r    (or π × diameter).\n\n` +
+      `r = 4:  C = 2 × 3.14 × 4 = 25.12.`,
+    generate() {
+      const r = MATH.rand(2, 9);
+      const ans = +(2 * 3.14 * r).toFixed(2);
+      const opts = MATH.shuffle([String(ans), String(+(3.14*r*r).toFixed(2)), String(+(3.14*r).toFixed(2)), String(2 * r)]);
+      return {
+        question: `Circumference of a circle with radius ${r}? (use π ≈ 3.14)`,
+        explain: `C = 2πr = 2 × 3.14 × ${r} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(String(ans))
+      };
+    }
+  },
+
+  // ============================================================
+  // GRADE 8
+  // ============================================================
+  '8-pythagorean': {
+    grade: '8', name: 'Pythagorean Theorem',
+    intro:
+      `In a right triangle, the longest side (hypotenuse, opposite the right angle) is c.\n` +
+      `The other two are legs, a and b.\n\n` +
+      `   a² + b² = c²\n\n` +
+      `Legs 3 and 4: c² = 9 + 16 = 25, so c = 5.`,
+    generate() {
+      const triples = [[3, 4, 5], [6, 8, 10], [5, 12, 13], [8, 15, 17], [9, 12, 15]];
+      const [a, b, c] = triples[MATH.rand(0, triples.length - 1)];
+      return {
+        question: `Right triangle with legs ${a} and ${b}. What is the hypotenuse?`,
+        explain: `c² = ${a}² + ${b}² = ${a*a} + ${b*b} = ${a*a + b*b}.\nc = √${a*a + b*b} = ${c}.`,
+        ...MATH.mc(c, MATH.distractors(c, 3, 0, c * 2))
+      };
+    }
+  },
+
+  '8-square-roots': {
+    grade: '8', name: 'Square Roots',
+    intro:
+      `√n means "what number times itself = n?"\n\n` +
+      `√64 = 8 because 8 × 8 = 64.\n` +
+      `√81 = 9.  √100 = 10.\n\n` +
+      `Memorize perfect squares: 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144.`,
+    generate() {
+      const n = MATH.rand(2, 12);
+      return {
+        question: `√${n * n} = ?`,
+        explain: `${n} × ${n} = ${n * n}, so √${n*n} = ${n}.`,
+        ...MATH.mc(n, MATH.distractors(n, 3, 0, n * 2 + 2))
+      };
+    }
+  },
+
+  '8-exponent-laws': {
+    grade: '8', name: 'Exponent Laws',
+    intro:
+      `Two key rules:\n` +
+      `  MULTIPLY same base → ADD exponents:  x^a · x^b = x^(a+b)\n` +
+      `  DIVIDE same base   → SUBTRACT:        x^a / x^b = x^(a−b)\n\n` +
+      `x³ · x² = x^(3+2) = x⁵.   x⁵ / x² = x³.`,
+    generate() {
+      const base = MATH.rand(2, 4);
+      const a = MATH.rand(2, 5), b = MATH.rand(1, 4);
+      const ans = a + b;
+      return {
+        question: `Simplify ${base}^${a} × ${base}^${b}. (Give the exponent.)`,
+        explain: `Same base → add exponents: ${a} + ${b} = ${ans}. Result: ${base}^${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  '8-scientific-notation': {
+    grade: '8', name: 'Scientific Notation',
+    intro:
+      `Scientific notation: a × 10ⁿ, where 1 ≤ a < 10.\n\n` +
+      `35,000 = 3.5 × 10⁴.   The exponent counts the decimal-shift places.\n` +
+      `0.0042 = 4.2 × 10⁻³.`,
+    generate() {
+      const a = MATH.rand(1, 9);
+      const n = MATH.rand(2, 5);
+      const value = a * Math.pow(10, n);
+      const ans = `${a} × 10^${n}`;
+      const opts = MATH.shuffle([ans, `${a} × 10^${n-1}`, `${a*10} × 10^${n-1}`, `${a} × 10^${n+1}`]);
+      return {
+        question: `Write ${value.toLocaleString()} in scientific notation.`,
+        explain: `Move the decimal ${n} places left → ${a}.0 × 10^${n} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  '8-slope-from-points': {
+    grade: '8', name: 'Slope from Two Points',
+    intro:
+      `Slope (m) measures steepness: rise / run.\n\n` +
+      `For (x₁, y₁) and (x₂, y₂):  m = (y₂ − y₁) / (x₂ − x₁)\n\n` +
+      `(1, 2) and (3, 8): m = (8−2)/(3−1) = 6/2 = 3.`,
+    generate() {
+      const x1 = MATH.rand(-3, 3), y1 = MATH.rand(-3, 3);
+      const dx = MATH.rand(1, 4);
+      const m = MATH.rand(1, 4) * (Math.random() > 0.5 ? 1 : -1);
+      const x2 = x1 + dx;
+      const y2 = y1 + m * dx;
+      return {
+        question: `Slope through (${x1}, ${y1}) and (${x2}, ${y2}) = ?`,
+        explain: `m = (${y2} − ${y1}) / (${x2} − ${x1}) = ${y2-y1}/${dx} = ${m}.`,
+        ...MATH.mc(m, MATH.distractors(m, 3, m - 5, m + 5))
+      };
+    }
+  },
+
+  '8-function-eval': {
+    grade: '8', name: 'Evaluating Functions',
+    intro:
+      `Functions are rules. f(x) means "plug x into the rule".\n\n` +
+      `f(x) = 2x + 3.\n` +
+      `f(4) = 2(4) + 3 = 11.\n` +
+      `f(0) = 2(0) + 3 = 3.`,
+    generate() {
+      const a = MATH.rand(2, 5), b = MATH.rand(1, 9);
+      const x = MATH.rand(-3, 5);
+      const ans = a * x + b;
+      return {
+        question: `f(x) = ${a}x + ${b}. Find f(${x}).`,
+        explain: `f(${x}) = ${a}(${x}) + ${b} = ${a*x} + ${b} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 8, ans + 8))
+      };
+    }
+  },
+
+  '8-system-substitution': {
+    grade: '8', name: 'Systems by Substitution',
+    intro:
+      `A system has two equations and two unknowns.\n\n` +
+      `Solve one equation for a variable, then SUBSTITUTE into the other.\n\n` +
+      `   y = 2x       and   x + y = 9.\n` +
+      `Substitute: x + 2x = 9  →  3x = 9  →  x = 3, y = 6.`,
+    generate() {
+      const x = MATH.rand(1, 6);
+      const k = MATH.rand(2, 4);
+      const y = k * x;
+      const sum = x + y;
+      return {
+        question: `Solve:  y = ${k}x,  x + y = ${sum}.  x = ?`,
+        explain: `Substitute y = ${k}x: x + ${k}x = ${sum} → ${k+1}x = ${sum} → x = ${x}.`,
+        ...MATH.mc(x, MATH.distractors(x, 3, 0, x * 2 + 2))
+      };
+    }
+  },
+
+  // ============================================================
+  // ALGEBRA 1
+  // ============================================================
+  'alg1-solve-linear': {
+    grade: 'Algebra 1', name: 'Solving Linear Equations',
+    intro:
+      `Goal: isolate x.  Whatever you do to one side, do to the other.\n\n` +
+      `3x − 7 = 14:\n` +
+      ` Add 7:    3x = 21.\n` +
+      ` Divide 3: x = 7.\n` +
+      ` Check: 3(7) − 7 = 14 ✓`,
+    generate() {
+      const a = MATH.rand(2, 6), b = MATH.rand(1, 9);
+      const x = MATH.rand(2, 9);
+      const eq = a * x - b;
+      return {
+        question: `Solve ${a}x − ${b} = ${eq}.  x = ?`,
+        explain: `Add ${b}: ${a}x = ${eq + b}.\nDivide by ${a}: x = ${x}.`,
+        ...MATH.mc(x, MATH.distractors(x, 3, 0, x * 2 + 2))
+      };
+    }
+  },
+
+  'alg1-slope-intercept': {
+    grade: 'Algebra 1', name: 'Slope-Intercept Form',
+    intro:
+      `y = mx + b is slope-intercept form.\n` +
+      `   m = slope (steepness).\n` +
+      `   b = y-intercept (where line crosses the y-axis).\n\n` +
+      `y = 2x + 3:  slope 2, y-intercept 3. Crosses y at (0, 3); rises 2 for every 1 right.`,
+    generate() {
+      const m = MATH.rand(-4, 4) || 2;
+      const b = MATH.rand(-5, 5);
+      const x = MATH.rand(-3, 4);
+      const ans = m * x + b;
+      const bSign = b >= 0 ? `+ ${b}` : `− ${Math.abs(b)}`;
+      return {
+        question: `Line y = ${m}x ${bSign}. Find y when x = ${x}.`,
+        explain: `y = ${m}(${x}) ${bSign} = ${m*x} ${bSign} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 8, ans + 8))
+      };
+    }
+  },
+
+  'alg1-foil': {
+    grade: 'Algebra 1', name: 'FOIL (Multiplying Binomials)',
+    intro:
+      `FOIL = First, Outer, Inner, Last.\n\n` +
+      `(x + 2)(x + 3):\n` +
+      ` F: x · x = x²\n` +
+      ` O: x · 3 = 3x\n` +
+      ` I: 2 · x = 2x\n` +
+      ` L: 2 · 3 = 6\n` +
+      `Sum: x² + 5x + 6.`,
+    generate() {
+      const a = MATH.rand(1, 6), b = MATH.rand(1, 6);
+      const ans = `x² + ${a+b}x + ${a*b}`;
+      const opts = MATH.shuffle([ans, `x² + ${a*b}x + ${a+b}`, `x² + ${a+b}x + ${a+b}`, `x² − ${a+b}x + ${a*b}`]);
+      return {
+        question: `Expand (x + ${a})(x + ${b}).`,
+        explain: `F: x²\nO + I: ${a}x + ${b}x = ${a+b}x\nL: ${a} × ${b} = ${a*b}\n→ ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  'alg1-factor-trinomial': {
+    grade: 'Algebra 1', name: 'Factoring Trinomials',
+    intro:
+      `To factor x² + bx + c, find two numbers that:\n` +
+      `   MULTIPLY to c\n` +
+      `   ADD to b\n\n` +
+      `x² + 5x + 6:  need ×=6, +=5  →  2 and 3.\n` +
+      `→ (x + 2)(x + 3).`,
+    generate() {
+      const a = MATH.rand(1, 6), b = MATH.rand(1, 6);
+      const sum = a + b, prod = a * b;
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      const ans = `(x + ${lo})(x + ${hi})`;
+      const opts = MATH.shuffle([ans, `(x + ${sum})(x + ${prod})`, `(x − ${lo})(x − ${hi})`, `(x + ${lo+1})(x + ${hi+1})`]);
+      return {
+        question: `Factor x² + ${sum}x + ${prod}.`,
+        explain: `Two numbers ×=${prod}, +=${sum}: ${lo} and ${hi}.\n→ ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  'alg1-quadratic-formula': {
+    grade: 'Algebra 1', name: 'Quadratic Formula',
+    intro:
+      `For ax² + bx + c = 0:\n` +
+      `   x = (−b ± √(b² − 4ac)) / (2a)\n\n` +
+      `Discriminant b² − 4ac tells solution count:\n` +
+      `   > 0 : 2 real solutions\n` +
+      `   = 0 : 1 solution\n` +
+      `   < 0 : no real solutions.`,
+    generate() {
+      const r1 = MATH.rand(1, 5), r2 = MATH.rand(1, 5);
+      const b = -(r1 + r2), c = r1 * r2;
+      const small = Math.min(r1, r2);
+      const disc = b*b - 4*c;
+      const root = Math.sqrt(disc);
+      const bSign = b >= 0 ? `+ ${b}` : `− ${Math.abs(b)}`;
+      return {
+        question: `Solve x² ${bSign}x + ${c} = 0. (Give the smaller solution.)`,
+        explain: `Discriminant: (${b})² − 4(1)(${c}) = ${disc}. √${disc} = ${root}.\nx = (${-b} ± ${root})/2 → x = ${r1} or ${r2}. Smaller: ${small}.`,
+        ...MATH.mc(small, MATH.distractors(small, 3, 0, 10))
+      };
+    }
+  },
+
+  'alg1-inequality': {
+    grade: 'Algebra 1', name: 'Solving Inequalities',
+    intro:
+      `Solve like an equation, BUT: when you multiply or divide by a NEGATIVE, FLIP the inequality.\n\n` +
+      `−2x < 8.\n` +
+      `Divide by −2 AND flip: x > −4.`,
+    generate() {
+      const a = MATH.rand(2, 5);
+      const x = MATH.rand(1, 6);
+      const rhs = a * (x + 1);
+      const ans = `x < ${x + 1}`;
+      const opts = MATH.shuffle([ans, `x > ${x+1}`, `x < ${x}`, `x ≤ ${x+1}`]);
+      return {
+        question: `Solve ${a}x < ${rhs}. Which is correct?`,
+        explain: `Divide both sides by ${a}: x < ${rhs}/${a} = ${x + 1}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  // ============================================================
+  // GEOMETRY
+  // ============================================================
+  'geo-angle-sum-triangle': {
+    grade: 'Geometry', name: 'Triangle Angle Sum',
+    intro:
+      `The three angles of ANY triangle sum to 180°.\n\n` +
+      `Two angles given → subtract their sum from 180° for the third.\n` +
+      `60° + 70° = 130°. Third = 180° − 130° = 50°.`,
+    generate() {
+      const a = MATH.rand(20, 80);
+      const b = MATH.rand(20, 170 - a);
+      const ans = 180 - a - b;
+      return {
+        question: `Two angles of a triangle are ${a}° and ${b}°. The third?`,
+        explain: `${a} + ${b} = ${a + b}. 180 − ${a + b} = ${ans}°.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 10, 170))
+      };
+    }
+  },
+
+  'geo-supplementary': {
+    grade: 'Geometry', name: 'Supplementary Angles',
+    intro:
+      `Two angles are SUPPLEMENTARY if they sum to 180°.\n` +
+      `Think of a straight line — angles on a straight line add to 180°.\n\n` +
+      `If one angle is 130°, its supplement is 50°.`,
+    generate() {
+      const a = MATH.rand(20, 160);
+      const ans = 180 - a;
+      return {
+        question: `What is the supplement of a ${a}° angle?`,
+        explain: `180 − ${a} = ${ans}°.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 10, 170))
+      };
+    }
+  },
+
+  'geo-area-triangle': {
+    grade: 'Geometry', name: 'Area of a Triangle',
+    intro:
+      `Area of a triangle = ½ × base × height.\n\n` +
+      `Base 8, height 5:  ½ × 8 × 5 = 20.`,
+    generate() {
+      const b = MATH.rand(3, 12) * 2;
+      const h = MATH.rand(3, 12);
+      const ans = (b * h) / 2;
+      return {
+        question: `Triangle with base ${b} and height ${h}. Area = ?`,
+        explain: `A = ½ × ${b} × ${h} = ½ × ${b*h} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  'geo-similar-triangles': {
+    grade: 'Geometry', name: 'Similar Triangles',
+    intro:
+      `Similar triangles have the SAME shape but different sizes. Corresponding sides are in proportion.\n\n` +
+      `If a 3-4-5 triangle is similar to one with first side 6,\n` +
+      `the scale factor is 6/3 = 2, so the others are 8 and 10.`,
+    generate() {
+      const base = MATH.rand(2, 4);
+      const factor = MATH.rand(2, 4);
+      const big = base * factor;
+      const otherSmall = MATH.rand(2, 6);
+      const ans = otherSmall * factor;
+      return {
+        question: `Two similar triangles. Small one has sides ${base} and ${otherSmall}. The big one has corresponding sides ${big} and ?`,
+        explain: `Scale factor = ${big}/${base} = ${factor}. Missing side = ${otherSmall} × ${factor} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  'geo-volume-cylinder': {
+    grade: 'Geometry', name: 'Volume of a Cylinder',
+    intro:
+      `Cylinder: stack of circles. Volume = base area × height.\n\n` +
+      `V = π × r² × h\n\n` +
+      `r = 3, h = 5:  V = 3.14 × 9 × 5 = 141.3.`,
+    generate() {
+      const r = MATH.rand(2, 6);
+      const h = MATH.rand(2, 8);
+      const ans = +(3.14 * r * r * h).toFixed(2);
+      const opts = MATH.shuffle([String(ans), String(+(3.14*r*h).toFixed(2)), String(+(3.14*r*r).toFixed(2)), String(r*r*h)]);
+      return {
+        question: `Cylinder radius ${r}, height ${h}. Volume? (π ≈ 3.14)`,
+        explain: `V = πr²h = 3.14 × ${r}² × ${h} = 3.14 × ${r*r} × ${h} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(String(ans))
+      };
+    }
+  },
+
+  'geo-distance-formula': {
+    grade: 'Geometry', name: 'Distance Formula',
+    intro:
+      `Distance between (x₁, y₁) and (x₂, y₂):\n` +
+      `   d = √((x₂−x₁)² + (y₂−y₁)²)\n\n` +
+      `It's the Pythagorean theorem in coordinates.\n` +
+      `(0,0) to (3,4): d = √(9+16) = √25 = 5.`,
+    generate() {
+      const triples = [[3, 4, 5], [6, 8, 10], [5, 12, 13]];
+      const [dx, dy, d] = triples[MATH.rand(0, triples.length - 1)];
+      const x1 = MATH.rand(-3, 3), y1 = MATH.rand(-3, 3);
+      return {
+        question: `Distance from (${x1}, ${y1}) to (${x1 + dx}, ${y1 + dy})?`,
+        explain: `Δx = ${dx}, Δy = ${dy}.\nd = √(${dx}² + ${dy}²) = √(${dx*dx} + ${dy*dy}) = √${dx*dx + dy*dy} = ${d}.`,
+        ...MATH.mc(d, MATH.distractors(d, 3, 0, d * 2))
+      };
+    }
+  },
+
+  // ============================================================
+  // ALGEBRA 2
+  // ============================================================
+  'alg2-function-composition': {
+    grade: 'Algebra 2', name: 'Function Composition',
+    intro:
+      `(f ∘ g)(x) means f(g(x)) — do g first, then plug result into f.\n\n` +
+      `f(x) = 2x + 1, g(x) = x²:\n` +
+      `(f ∘ g)(3) = f(g(3)) = f(9) = 2(9) + 1 = 19.`,
+    generate() {
+      const a = MATH.rand(2, 4), b = MATH.rand(1, 5);
+      const x = MATH.rand(1, 4);
+      const g = x * x;
+      const ans = a * g + b;
+      return {
+        question: `f(x) = ${a}x + ${b}, g(x) = x². Find f(g(${x})).`,
+        explain: `g(${x}) = ${x}² = ${g}.\nThen f(${g}) = ${a}(${g}) + ${b} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, ans - 10, ans + 10))
+      };
+    }
+  },
+
+  'alg2-log-eval': {
+    grade: 'Algebra 2', name: 'Evaluating Logarithms',
+    intro:
+      `log_b(n) asks: "b to what power gives n?"\n\n` +
+      `log₂(8) = 3 because 2³ = 8.\n` +
+      `log₁₀(100) = 2.\n` +
+      `log_b(1) = 0 always.`,
+    generate() {
+      const base = [2, 3, 5, 10][MATH.rand(0, 3)];
+      const exp = MATH.rand(2, 4);
+      const arg = Math.pow(base, exp);
+      return {
+        question: `log${base === 10 ? '' : '_' + base}(${arg}) = ?`,
+        explain: `${arg} = ${base}^${exp}.\nlog${base === 10 ? '' : '_' + base}(${base}^${exp}) = ${exp}.`,
+        ...MATH.mc(exp, MATH.distractors(exp, 3, 0, exp * 2 + 2))
+      };
+    }
+  },
+
+  'alg2-exp-growth': {
+    grade: 'Algebra 2', name: 'Exponential Growth',
+    intro:
+      `Exponential growth:  y = a · b^x   where b > 1.\n\n` +
+      `Start at 100, double each year. After 3 years:\n` +
+      `   y = 100 · 2³ = 100 · 8 = 800.`,
+    generate() {
+      const a = MATH.rand(2, 6);
+      const b = MATH.rand(2, 3);
+      const x = MATH.rand(1, 4);
+      const ans = a * Math.pow(b, x);
+      return {
+        question: `y = ${a} · ${b}^x. Find y when x = ${x}.`,
+        explain: `${b}^${x} = ${Math.pow(b, x)}. Then ${a} × ${Math.pow(b, x)} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  'alg2-complete-square': {
+    grade: 'Algebra 2', name: 'Completing the Square',
+    intro:
+      `For x² + bx, add (b/2)² to make a perfect square.\n\n` +
+      `x² + 6x:  half of 6 is 3, 3² = 9. So x² + 6x + 9 = (x + 3)².\n\n` +
+      `Useful for solving quadratics that don't factor cleanly.`,
+    generate() {
+      const half = MATH.rand(2, 6);
+      const b = 2 * half;
+      const ans = half * half;
+      return {
+        question: `Complete the square: x² + ${b}x + ___. What goes in the blank?`,
+        explain: `Half of ${b} is ${half}. ${half}² = ${ans}.\nSo x² + ${b}x + ${ans} = (x + ${half})².`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2 + 4))
+      };
+    }
+  },
+
+  'alg2-rational-eval': {
+    grade: 'Algebra 2', name: 'Rational Expressions',
+    intro:
+      `A rational expression is a fraction with polynomials.\n\n` +
+      `Simplify by FACTORING and canceling matching factors:\n` +
+      `   (x² − 4) / (x − 2)\n` +
+      ` = ((x − 2)(x + 2)) / (x − 2)\n` +
+      ` = x + 2.`,
+    generate() {
+      const a = MATH.rand(2, 6);
+      const x = MATH.rand(a + 1, a + 5);
+      const ans = x + a;
+      return {
+        question: `Simplify (x² − ${a*a}) / (x − ${a}), then evaluate at x = ${x}.`,
+        explain: `x² − ${a*a} = (x − ${a})(x + ${a}). Cancel (x − ${a}) → x + ${a}.\nAt x = ${x}: ${x} + ${a} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  // ============================================================
+  // PRE-CALCULUS
+  // ============================================================
+  'pc-unit-circle': {
+    grade: 'Pre-Calculus', name: 'Unit Circle',
+    intro:
+      `Unit circle: radius 1, centered at the origin.\n\n` +
+      `Key angles and (cos, sin):\n` +
+      `   0°: (1, 0)\n` +
+      `  30°: (√3/2, 1/2)\n` +
+      `  45°: (√2/2, √2/2)\n` +
+      `  60°: (1/2, √3/2)\n` +
+      `  90°: (0, 1)\n\n` +
+      `cos = x-coordinate. sin = y-coordinate.`,
+    generate() {
+      const angles = [
+        { deg: 0, sin: '0', cos: '1' },
+        { deg: 30, sin: '1/2', cos: '√3/2' },
+        { deg: 45, sin: '√2/2', cos: '√2/2' },
+        { deg: 60, sin: '√3/2', cos: '1/2' },
+        { deg: 90, sin: '1', cos: '0' }
+      ];
+      const a = angles[MATH.rand(0, angles.length - 1)];
+      const askSin = Math.random() > 0.5;
+      const ans = askSin ? a.sin : a.cos;
+      const pool = ['0', '1/2', '√2/2', '√3/2', '1'].filter(o => o !== ans);
+      const opts = MATH.shuffle([ans, ...pool.slice(0, 3)]);
+      return {
+        question: `${askSin ? 'sin' : 'cos'}(${a.deg}°) = ?`,
+        explain: `At ${a.deg}° on the unit circle: (cos, sin) = (${a.cos}, ${a.sin}). ${askSin ? 'sin = y' : 'cos = x'} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  'pc-trig-ratios': {
+    grade: 'Pre-Calculus', name: 'SOH-CAH-TOA',
+    intro:
+      `In a right triangle:\n` +
+      `   SOH:  sin θ = Opposite / Hypotenuse\n` +
+      `   CAH:  cos θ = Adjacent / Hypotenuse\n` +
+      `   TOA:  tan θ = Opposite / Adjacent`,
+    generate() {
+      const triples = [[3, 4, 5], [6, 8, 10], [5, 12, 13]];
+      const [opp, adj, hyp] = triples[MATH.rand(0, triples.length - 1)];
+      const ratio = ['sin', 'cos', 'tan'][MATH.rand(0, 2)];
+      const ans = ratio === 'sin' ? `${opp}/${hyp}` : ratio === 'cos' ? `${adj}/${hyp}` : `${opp}/${adj}`;
+      const opts = MATH.shuffle([`${opp}/${hyp}`, `${adj}/${hyp}`, `${opp}/${adj}`, `${hyp}/${opp}`]);
+      return {
+        question: `Right triangle, opposite ${opp}, adjacent ${adj}, hypotenuse ${hyp}.  ${ratio}(θ) = ?`,
+        explain: `${ratio === 'sin' ? 'SOH: opposite/hypotenuse' : ratio === 'cos' ? 'CAH: adjacent/hypotenuse' : 'TOA: opposite/adjacent'} = ${ans}.`,
+        options: opts,
+        answerIndex: opts.indexOf(ans)
+      };
+    }
+  },
+
+  'pc-arith-sequence': {
+    grade: 'Pre-Calculus', name: 'Arithmetic Sequences',
+    intro:
+      `Arithmetic sequence ADDS a common difference (d) each step.\n` +
+      `2, 5, 8, 11, ...  d = 3.\n\n` +
+      `nth term:  aₙ = a₁ + (n − 1) · d.\n` +
+      `10th term: 2 + 9·3 = 29.`,
+    generate() {
+      const a1 = MATH.rand(1, 9);
+      const d = MATH.rand(2, 6);
+      const n = MATH.rand(5, 10);
+      const ans = a1 + (n - 1) * d;
+      return {
+        question: `First term ${a1}, common difference ${d}. Find the ${n}th term.`,
+        explain: `aₙ = ${a1} + (${n} − 1) × ${d} = ${a1} + ${(n-1)*d} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  'pc-geom-sequence': {
+    grade: 'Pre-Calculus', name: 'Geometric Sequences',
+    intro:
+      `Geometric sequence MULTIPLIES by a common ratio (r) each step.\n\n` +
+      `2, 6, 18, 54, ...  r = 3.\n\n` +
+      `nth term:  aₙ = a₁ · r^(n−1).`,
+    generate() {
+      const a1 = MATH.rand(1, 4);
+      const r = MATH.rand(2, 3);
+      const n = MATH.rand(3, 5);
+      const ans = a1 * Math.pow(r, n - 1);
+      return {
+        question: `First term ${a1}, common ratio ${r}. Find the ${n}th term.`,
+        explain: `aₙ = ${a1} · ${r}^${n - 1} = ${a1} × ${Math.pow(r, n - 1)} = ${ans}.`,
+        ...MATH.mc(ans, MATH.distractors(ans, 3, 0, ans * 2))
+      };
+    }
+  },
+
+  'pc-log-props': {
+    grade: 'Pre-Calculus', name: 'Log Properties',
+    intro:
+      `Three big log rules:\n` +
+      `   log(ab)  = log a + log b   (product → sum)\n` +
+      `   log(a/b) = log a − log b   (quotient → difference)\n` +
+      `   log(aⁿ)  = n · log a       (power → coefficient)\n\n` +
+      `Example: log(8) = log(2³) = 3·log(2).`,
+    generate() {
+      const base = 2;
+      const n = MATH.rand(2, 5);
+      const arg = Math.pow(base, n);
+      return {
+        question: `Using log(aⁿ) = n·log(a), simplify log_${base}(${arg}).`,
+        explain: `${arg} = ${base}^${n}.  log_${base}(${base}^${n}) = ${n} · log_${base}(${base}) = ${n} · 1 = ${n}.`,
+        ...MATH.mc(n, MATH.distractors(n, 3, 0, n * 2 + 2))
+      };
+    }
   }
 
 };
 
 // Order matters for grade progression.
-const GRADE_ORDER = ['K', '1', '2', '3', '4', '5'];
+const GRADE_ORDER = ['K', '1', '2', '3', '4', '5', '6', '7', '8', 'Algebra 1', 'Geometry', 'Algebra 2', 'Pre-Calculus'];
+
+// Display-friendly label for a grade string (used in modal titles).
+function MATH_gradeLabel(grade) {
+  return /^(K|\d+)$/.test(grade) ? `Grade ${grade}` : grade;
+}
 
 function MATH_skillsForGrade(grade) {
   return Object.entries(MATH_SKILLS).filter(([, s]) => s.grade === grade).map(([id]) => id);

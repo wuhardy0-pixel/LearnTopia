@@ -969,8 +969,11 @@ function pickSkillId() {
   return weighted[0].id;
 }
 
-// ----- Mastery course state -----
-let masteryCourse = null; // { grade, pool, remaining, score, total }
+// ----- Mastery course + placement state -----
+let masteryCourse = null;   // { grade, pool, remaining, score, total }
+let placement = null;       // { index, results: [{ skillId, grade, correct }] }
+let answersSinceAdjustmentCheck = 0;
+let lastAdjustmentSuggestion = null; // grade we last suggested (don't spam)
 let currentSkillId = null;
 let currentQuestion = null;
 
@@ -984,6 +987,17 @@ function startMasteryCourse(grade) {
 
 function showQuestionModal() {
   if (!localUserConfig) return;
+
+  // First-time placement quiz takes priority over everything.
+  if (!localUserConfig.placementDone && !placement) {
+    placement = { index: 0, results: [] };
+    presentPlacementQuestion();
+    return;
+  }
+  if (placement) {
+    presentPlacementQuestion();
+    return;
+  }
 
   // If a mastery course is active, present the next question from its pool.
   if (masteryCourse) {
@@ -1005,6 +1019,149 @@ function showQuestionModal() {
   const st = getMathState(skillId);
   if (!st.introSeen) { showIntroModal(skillId); return; }
   presentSkillQuestion(skillId, {});
+}
+
+// =========================================================
+// Placement quiz
+// =========================================================
+function presentPlacementQuestion() {
+  const skillId = PLACEMENT_TEST[placement.index];
+  const skill = MATH_SKILLS[skillId];
+  const q = skill.generate();
+  currentSkillId = skillId;
+  currentQuestion = q;
+
+  document.querySelector('#question-modal h2').textContent = `🎯 Placement Quiz — Q ${placement.index + 1} of ${PLACEMENT_TEST.length}`;
+  document.getElementById('question-progress').textContent = `Finding your starting level… (${MATH_gradeLabel(skill.grade)} territory)`;
+  document.getElementById('question-text').innerHTML = q.question.replace(/\n/g, '<br/>');
+  const grid = document.getElementById('options-grid');
+  grid.innerHTML = '';
+  q.options.forEach((opt, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.onclick = () => onPlacementAnswer(skillId, q, idx);
+    grid.appendChild(btn);
+  });
+  document.getElementById('question-modal').classList.remove('hidden');
+}
+
+function onPlacementAnswer(skillId, q, idx) {
+  const correct = idx === q.answerIndex;
+  const skill = MATH_SKILLS[skillId];
+  placement.results.push({ skillId, grade: skill.grade, correct });
+  document.getElementById('question-modal').classList.add('hidden');
+  const advance = () => {
+    placement.index++;
+    if (placement.index < PLACEMENT_TEST.length) {
+      setTimeout(presentPlacementQuestion, 200);
+    } else {
+      finishPlacement();
+    }
+  };
+  if (!correct) showExplainModal(skillId, q, advance);
+  else advance();
+}
+
+function finishPlacement() {
+  // Pick the highest-grade question they got right.
+  let highestIdx = -1;
+  for (const r of placement.results) {
+    if (r.correct) {
+      const idx = GRADE_ORDER.indexOf(r.grade);
+      if (idx > highestIdx) highestIdx = idx;
+    }
+  }
+  const placedGrade = highestIdx >= 0 ? GRADE_ORDER[highestIdx] : 'K';
+  const score = placement.results.filter(r => r.correct).length;
+  const total = placement.results.length;
+  placement = null;
+  localUserConfig.placementDone = true;
+  localUserConfig.activeGrade = placedGrade;
+  answersSinceAdjustmentCheck = 0;
+  lastAdjustmentSuggestion = null;
+  socket.emit('setActiveGrade', { grade: placedGrade, source: 'placement' });
+  showPlacementResult(placedGrade, score, total);
+}
+
+function showPlacementResult(grade, score, total) {
+  const modal = document.getElementById('mastery-modal');
+  document.getElementById('mastery-stage-intro').classList.add('hidden');
+  document.getElementById('mastery-stage-result').classList.remove('hidden');
+  document.getElementById('mastery-result-emoji').textContent = '🎯';
+  document.getElementById('mastery-result-title').textContent = `Starting Level: ${MATH_gradeLabel(grade)}`;
+  document.getElementById('mastery-result-body').textContent =
+    `Placement score: ${score} / ${total}\n\n` +
+    `We're starting you at ${MATH_gradeLabel(grade)}. As you master each level, you'll automatically advance — and if questions feel too easy or too hard, the engine will offer to switch you up or down.`;
+  document.getElementById('btn-mastery-done').textContent = 'Let\'s go!';
+  modal.classList.remove('hidden');
+  document.getElementById('btn-mastery-done').onclick = () => {
+    modal.classList.add('hidden');
+    canvas.focus();
+  };
+}
+
+// =========================================================
+// Continuous level adjustment
+// =========================================================
+function checkGradeAdjustment() {
+  answersSinceAdjustmentCheck++;
+  if (answersSinceAdjustmentCheck < 12) return;
+  answersSinceAdjustmentCheck = 0;
+
+  const grade = localUserConfig.activeGrade || 'K';
+  if (grade === lastAdjustmentSuggestion) return;
+  const skills = MATH_skillsForGrade(grade);
+  let c = 0, i = 0, masteredCount = 0;
+  for (const sid of skills) {
+    const st = (localUserConfig.mathProgress || {})[sid];
+    if (st) { c += st.correct || 0; i += st.incorrect || 0; if (st.mastered) masteredCount++; }
+  }
+  const total = c + i;
+  if (total < 10) return;
+  const accuracy = c / total;
+  const gradeIdx = GRADE_ORDER.indexOf(grade);
+
+  if (accuracy < 0.35 && gradeIdx > 0) {
+    lastAdjustmentSuggestion = grade;
+    showAdjustmentModal('down', GRADE_ORDER[gradeIdx - 1], accuracy);
+  } else if (accuracy > 0.9 && gradeIdx < GRADE_ORDER.length - 1 && masteredCount < skills.length) {
+    lastAdjustmentSuggestion = grade;
+    showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
+  }
+}
+
+function showAdjustmentModal(direction, targetGrade, accuracy) {
+  const modal = document.getElementById('mastery-modal');
+  document.getElementById('mastery-stage-intro').classList.remove('hidden');
+  document.getElementById('mastery-stage-result').classList.add('hidden');
+  const pct = Math.round(accuracy * 100);
+  if (direction === 'down') {
+    document.getElementById('mastery-title').textContent = 'Try an easier level?';
+    document.getElementById('mastery-body').textContent =
+      `Your recent accuracy is around ${pct}%. These look tough!\n\n` +
+      `Want to drop down to ${MATH_gradeLabel(targetGrade)} and build up your foundations? You can come back any time.`;
+  } else {
+    document.getElementById('mastery-title').textContent = 'Want to skip ahead?';
+    document.getElementById('mastery-body').textContent =
+      `You're scoring around ${pct}% — way above the level!\n\n` +
+      `Want to jump up to ${MATH_gradeLabel(targetGrade)}?`;
+  }
+  const startBtn = document.getElementById('btn-mastery-start');
+  const laterBtn = document.getElementById('btn-mastery-later');
+  startBtn.textContent = `Switch to ${MATH_gradeLabel(targetGrade)}`;
+  laterBtn.textContent = 'Stay here';
+  modal.classList.remove('hidden');
+  startBtn.onclick = () => {
+    modal.classList.add('hidden');
+    localUserConfig.activeGrade = targetGrade;
+    socket.emit('setActiveGrade', { grade: targetGrade, source: 'adjustment' });
+    canvas.focus();
+  };
+  laterBtn.onclick = () => {
+    modal.classList.add('hidden');
+    canvas.focus();
+  };
 }
 
 function presentSkillQuestion(skillId, opts) {
@@ -1061,11 +1218,13 @@ function onAnswer(skillId, q, index, opts) {
     const gc = getGradeCompleted();
     if (!gc[grade] && MATH_allMastered(localUserConfig.mathProgress, grade)) {
       setTimeout(() => showMasteryModal(grade), 400);
+    } else {
+      checkGradeAdjustment();
     }
   } else {
     st.incorrect++; st.streak = 0;
     socket.emit('interact', { type: 'answer', skillId, correct: false });
-    showExplainModal(skillId, q, () => canvas.focus());
+    showExplainModal(skillId, q, () => { canvas.focus(); checkGradeAdjustment(); });
   }
 }
 
@@ -1105,6 +1264,8 @@ function showMasteryModal(grade) {
   document.getElementById('mastery-body').textContent =
     `Amazing — you've mastered every skill in ${MATH_gradeLabel(grade)}!\n\n` +
     `One last challenge: 10 mixed questions across everything you've learned. Score 8+ to graduate to the next level.`;
+  document.getElementById('btn-mastery-start').textContent = 'Begin the Mastery Course';
+  document.getElementById('btn-mastery-later').textContent = 'Later';
   modal.classList.remove('hidden');
   document.getElementById('btn-mastery-start').onclick = () => {
     modal.classList.add('hidden');
@@ -1151,10 +1312,15 @@ function showMasteryResult(course, nextGrade, passed) {
     : `You've finished the highest level. Math champion!`;
   else body += `Need 8+ to graduate. Keep practicing the weaker skills, then try the Mastery Course again.`;
   document.getElementById('mastery-result-body').textContent = body;
+  document.getElementById('btn-mastery-done').textContent = 'Continue';
   modal.classList.remove('hidden');
   document.getElementById('btn-mastery-done').onclick = () => {
     modal.classList.add('hidden');
     canvas.focus();
+    if (passed) {
+      lastAdjustmentSuggestion = null;
+      answersSinceAdjustmentCheck = 0;
+    }
   };
 }
 

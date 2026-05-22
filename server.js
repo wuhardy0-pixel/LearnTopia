@@ -103,7 +103,8 @@ io.on('connection', (socket) => {
       cosmetics: { unlockedSkins: ['#ffffff'], unlockedTrails: ['none'], activeSkin: '#ffffff', activeTrail: 'none' },
       mathProgress: {},
       gradeCompleted: {},
-      activeGrade: 'K'
+      activeGrade: 'K',
+      placementDone: false
     };
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: users[username] });
@@ -115,8 +116,19 @@ io.on('connection', (socket) => {
     if (!u.mathProgress) u.mathProgress = {};
     if (!u.gradeCompleted) u.gradeCompleted = {};
     if (!u.activeGrade) u.activeGrade = 'K';
+    if (typeof u.placementDone !== 'boolean') u.placementDone = false;
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: u });
+  });
+
+  socket.on('setActiveGrade', ({ grade, source }) => {
+    const sMap = socketMap[socket.id];
+    if (!sMap || !sMap.username || !grade) return;
+    const u = users[sMap.username];
+    if (!u) return;
+    u.activeGrade = grade;
+    if (source === 'placement') u.placementDone = true;
+    socket.emit('authSuccess', { username: sMap.username, data: u });
   });
 
   socket.on('mathIntroSeen', ({ skillId }) => {

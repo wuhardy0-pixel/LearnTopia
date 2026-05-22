@@ -2074,6 +2074,21 @@ const MATH_SKILLS = {
 // Order matters for grade progression.
 const GRADE_ORDER = ['K', '1', '2', '3', '4', '5', '6', '7', '8', 'Algebra 1', 'Geometry', 'Algebra 2', 'Pre-Calculus'];
 
+// Quick placement test — escalating in difficulty. The student's starting
+// grade is the highest GRADE_ORDER position they answer correctly. If they
+// miss everything they start at K; if they ace it they start at the top.
+const PLACEMENT_TEST = [
+  'k-add-within-10',      // K   — early arithmetic
+  '1-add-within-20',      // 1   — make-10 strategy
+  '2-add-2digit',         // 2   — regrouping
+  '3-mult-tables',        // 3   — multiplication facts
+  '5-add-fractions-diff', // 5   — fraction add with LCD
+  '7-two-step-eq',        // 7   — multi-step algebra prep
+  'alg1-foil',            // A1  — binomial expansion
+  'geo-distance-formula', // GEO — coordinate geometry
+  'alg2-log-eval'         // A2  — log evaluation
+];
+
 // Display-friendly label for a grade string (used in modal titles).
 function MATH_gradeLabel(grade) {
   return /^(K|\d+)$/.test(grade) ? `Grade ${grade}` : grade;

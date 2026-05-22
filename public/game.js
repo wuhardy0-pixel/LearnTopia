@@ -75,9 +75,63 @@ if (btnMusic && bgMusic) {
   });
 }
 
+// Local cache of per-user math state. Render free tier has no persistent
+// disk, so the server forgets users on every redeploy / 15-min idle. We
+// stash math state in the browser and rehydrate the server when it has
+// less than the client.
+const MATH_CACHE_KEY = u => 'learntopia:math:' + u;
+
+function cacheMathState() {
+  if (!myUsername || !localUserConfig) return;
+  try {
+    localStorage.setItem(MATH_CACHE_KEY(myUsername), JSON.stringify({
+      placementDone: !!localUserConfig.placementDone,
+      activeGrade: localUserConfig.activeGrade || 'K',
+      mathProgress: localUserConfig.mathProgress || {},
+      gradeCompleted: localUserConfig.gradeCompleted || {}
+    }));
+  } catch (e) { /* localStorage unavailable — ignore */ }
+}
+
+function maybeRestoreMathState() {
+  if (!myUsername || !localUserConfig) return false;
+  let cached;
+  try {
+    const raw = localStorage.getItem(MATH_CACHE_KEY(myUsername));
+    if (!raw) return false;
+    cached = JSON.parse(raw);
+  } catch (e) { return false; }
+
+  const serverKnowsPlacement = !!localUserConfig.placementDone;
+  const serverProgressCount = Object.keys(localUserConfig.mathProgress || {}).length;
+  const cachedProgressCount = Object.keys(cached.mathProgress || {}).length;
+
+  // Restore only when client clearly has MORE math state than server
+  // (server was wiped). Otherwise trust server.
+  const shouldRestore =
+    (!serverKnowsPlacement && cached.placementDone) ||
+    cachedProgressCount > serverProgressCount;
+  if (!shouldRestore) return false;
+
+  localUserConfig.placementDone = cached.placementDone || localUserConfig.placementDone;
+  localUserConfig.activeGrade = cached.activeGrade || localUserConfig.activeGrade;
+  localUserConfig.mathProgress = cached.mathProgress || localUserConfig.mathProgress;
+  localUserConfig.gradeCompleted = cached.gradeCompleted || localUserConfig.gradeCompleted;
+
+  socket.emit('restoreUserState', {
+    placementDone: localUserConfig.placementDone,
+    activeGrade: localUserConfig.activeGrade,
+    mathProgress: localUserConfig.mathProgress,
+    gradeCompleted: localUserConfig.gradeCompleted
+  });
+  return true;
+}
+
 socket.on('authSuccess', ({ username, data }) => {
   myUsername = username;
   localUserConfig = data;
+  maybeRestoreMathState();
+  cacheMathState();
   if (!views.auth.classList.contains('hidden')) showView('dashboard');
   updateDashboard();
   updateHUD();

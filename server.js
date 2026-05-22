@@ -131,6 +131,21 @@ io.on('connection', (socket) => {
     socket.emit('authSuccess', { username: sMap.username, data: u });
   });
 
+  // Server has no persistent storage (Render free tier). The client backs
+  // up math state in localStorage and rehydrates the server here when its
+  // in-memory copy is empty.
+  socket.on('restoreUserState', (state) => {
+    const sMap = socketMap[socket.id];
+    if (!sMap || !sMap.username || !state || typeof state !== 'object') return;
+    const u = users[sMap.username];
+    if (!u) return;
+    if (typeof state.placementDone === 'boolean') u.placementDone = state.placementDone;
+    if (typeof state.activeGrade === 'string') u.activeGrade = state.activeGrade;
+    if (state.mathProgress && typeof state.mathProgress === 'object') u.mathProgress = state.mathProgress;
+    if (state.gradeCompleted && typeof state.gradeCompleted === 'object') u.gradeCompleted = state.gradeCompleted;
+    // No authSuccess echo — the client already holds this exact state.
+  });
+
   socket.on('mathIntroSeen', ({ skillId }) => {
     const sMap = socketMap[socket.id];
     if (!sMap || !sMap.username || !skillId) return;

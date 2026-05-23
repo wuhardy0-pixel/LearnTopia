@@ -608,10 +608,14 @@ function tickPrediction(now, serverMe) {
   return predicted;
 }
 
-// Ball prediction for blastball: extrapolate position using the last
-// server velocity, decay it the same way the server does, bounce off
-// walls (skipping goal openings), and let the predicted player push the
-// ball locally so kicks feel instant.
+// Ball "prediction" for blastball: between server ticks we extrapolate
+// position using the latest authoritative velocity, so the ball moves
+// smoothly at 60 fps instead of jerking once every 33 ms. The server
+// stays fully in charge of bounces, collisions, and impulses — on every
+// gameState we just snap to the server's authoritative state. No client
+// bounce logic, no client impulse kicks. Earlier versions tried to
+// mirror those physics on the client and ended up fighting the server
+// (off-by-one ticks producing visible snap-backs).
 function tickBallPrediction(now) {
   if (gameMode !== 'blastball' || !predictedBall) return;
   if (predictedBall.scored) return;
@@ -621,52 +625,13 @@ function tickBallPrediction(now) {
   if (dt <= 0) return;
   if (dt > 0.1) dt = 0.1;
 
-  // Server velocity is "pixels per server tick"; converting: px/s = vx * SERVER_TICK_HZ
+  // Server velocity is pixels per server tick → px/s = vx * SERVER_TICK_HZ.
   predictedBall.x += predictedBall.vx * SERVER_TICK_HZ * dt;
   predictedBall.y += predictedBall.vy * SERVER_TICK_HZ * dt;
-  // Decay 0.985 per server tick → per-second factor is 0.985^30; raise to dt for this frame.
+  // Decay 0.985 per server tick → per-frame factor is 0.985^(SERVER_TICK_HZ*dt).
   const decay = Math.pow(0.985, SERVER_TICK_HZ * dt);
   predictedBall.vx *= decay;
   predictedBall.vy *= decay;
-
-  // Pitch bounds + goal openings (must match server)
-  const halfW = 1200, halfH = 800;
-  const goalHalf = 225;
-  const r = predictedBall.radius || 45;
-  if (predictedBall.y - r < -halfH) { predictedBall.y = -halfH + r; predictedBall.vy *= -1; }
-  if (predictedBall.y + r >  halfH) { predictedBall.y =  halfH - r; predictedBall.vy *= -1; }
-  if (predictedBall.x - r < -halfW) {
-    if (Math.abs(predictedBall.y) > goalHalf) { predictedBall.x = -halfW + r; predictedBall.vx *= -1; }
-  }
-  if (predictedBall.x + r >  halfW) {
-    if (Math.abs(predictedBall.y) > goalHalf) { predictedBall.x =  halfW - r; predictedBall.vx *= -1; }
-  }
-
-  // Local player pushes ball — mirrors the server-side collision so the
-  // first touch feels instant. We only apply the velocity kick on the
-  // FRAME we first start overlapping (wasTouching gate); otherwise at
-  // 60 fps we'd double the server's 30 Hz impulse rate and the ball
-  // would visibly snap back when the server's velocity arrives. The
-  // position overlap-push runs every frame so the ball still feels
-  // physically blocked by the player.
-  if (predicted) {
-    const dx = predictedBall.x - predicted.x;
-    const dy = predictedBall.y - predicted.y;
-    const dist = Math.hypot(dx, dy);
-    const minDist = r + 20;
-    if (dist < minDist && dist > 0) {
-      const overlap = minDist - dist;
-      predictedBall.x += (dx / dist) * overlap;
-      predictedBall.y += (dy / dist) * overlap;
-      if (!predictedBall.wasTouching) {
-        predictedBall.vx += (dx / dist) * 3;
-        predictedBall.vy += (dy / dist) * 3;
-        predictedBall.wasTouching = true;
-      }
-    } else {
-      predictedBall.wasTouching = false;
-    }
-  }
 }
 
 function render() {
@@ -1559,13 +1524,16 @@ socket.on('gameState', (data) => {
     gameMap.stations = gameState.stations;
   }
   // Reconcile ball prediction with the authoritative server state.
+  // Direct snap — no lerp. Between server ticks we extrapolate with the
+  // server's velocity, so snapping every 33 ms is essentially invisible
+  // when motion is steady, and decisive when the server bounces or
+  // impulses the ball (predicted would have been wrong then anyway).
   if (data.ball) {
     if (!predictedBall) {
       predictedBall = { x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, radius: data.ball.radius, scored: data.ball.scored, lastTime: performance.now() };
     } else {
-      // Lerp position toward server (smooths small drift), trust server velocity.
-      predictedBall.x += (data.ball.x - predictedBall.x) * 0.3;
-      predictedBall.y += (data.ball.y - predictedBall.y) * 0.3;
+      predictedBall.x = data.ball.x;
+      predictedBall.y = data.ball.y;
       predictedBall.vx = data.ball.vx;
       predictedBall.vy = data.ball.vy;
       predictedBall.radius = data.ball.radius;

@@ -560,10 +560,74 @@ const PREDICT_SPEED = 400;        // must match server's p.speed
 const SERVER_TICK_HZ = 30;        // must match server's physics setInterval rate
 
 function shouldPredictMovement() {
+  // Now includes dontlookdown (horizontal walking only) so DLD also
+  // feels responsive instead of waiting on a server round-trip.
   return gameMode === 'fishtopia' ||
          gameMode === 'blastball'  ||
          gameMode === 'onewayout'  ||
-         gameMode === 'coredefender';
+         gameMode === 'coredefender' ||
+         gameMode === 'dontlookdown';
+}
+
+// Clamp the predicted position to the same bounds + collisions the
+// server enforces. Without this, holding a key into a wall makes
+// predicted run past where the server allows; the next gameState then
+// snaps it back, producing visible rubber-band stutter. Mirroring
+// server bounds means predicted never gets ahead of reality and no
+// snap is needed for walls.
+function clampPredictedToWorld(serverMe) {
+  if (gameMode === 'fishtopia') {
+    predicted.x = Math.max(20, Math.min(predicted.x, RPG_WIDTH - 20));
+    predicted.y = Math.max(20, Math.min(predicted.y, RPG_HEIGHT - 20));
+  } else if (gameMode === 'blastball') {
+    predicted.x = Math.max(-1180, Math.min(predicted.x, 1180));
+    predicted.y = Math.max(-780,  Math.min(predicted.y, 780));
+  } else if (gameMode === 'coredefender') {
+    predicted.x = Math.max(-2000, Math.min(predicted.x, 2000));
+    predicted.y = Math.max(-2000, Math.min(predicted.y, 2000));
+    // Push out of core circle.
+    if (gameMap && gameMap.core) {
+      const c = gameMap.core;
+      const dxc = predicted.x - c.x, dyc = predicted.y - c.y;
+      const d = Math.hypot(dxc, dyc);
+      const minD = c.radius + 25;
+      if (d < minD && d > 0) {
+        predicted.x = c.x + (dxc / d) * minD;
+        predicted.y = c.y + (dyc / d) * minD;
+      }
+    }
+  } else if (gameMode === 'onewayout') {
+    // Replicate floor + gate collision so predicted doesn't walk off
+    // the map or through closed doors.
+    if (gameMap && gameMap.floors) {
+      let onFloor = false;
+      for (const f of gameMap.floors) {
+        if (predicted.x > f.x - 10 && predicted.x < f.x + f.w + 10 &&
+            predicted.y > f.y - 10 && predicted.y < f.y + f.h + 10) {
+          onFloor = true; break;
+        }
+      }
+      if (!onFloor) {
+        // Snap back to server (last known good position).
+        predicted.x = serverMe.x;
+        predicted.y = serverMe.y;
+      }
+    }
+    if (gameMap && gameMap.gates) {
+      const radius = 25;
+      for (const g of gameMap.gates) {
+        if (g.isOpen) continue;
+        if (predicted.x + radius > g.x && predicted.x - radius < g.x + g.w &&
+            predicted.y + radius > g.y && predicted.y - radius < g.y + g.h) {
+          predicted.x = serverMe.x;
+          predicted.y = serverMe.y;
+          break;
+        }
+      }
+    }
+  } else if (gameMode === 'dontlookdown') {
+    predicted.x = Math.max(20, Math.min(predicted.x, DLD_WIDTH - 20));
+  }
 }
 
 function tickPrediction(now, serverMe) {
@@ -577,7 +641,27 @@ function tickPrediction(now, serverMe) {
   predicted.lastTime = now;
   if (dt > 0.1) dt = 0.1; // tab inactive or jank — don't teleport
 
-  // Local input integration (same direction-normalize the server does)
+  // DLD predicts horizontal walking only — vertical motion (gravity,
+  // jumps, slope collision) is too involved to mirror cleanly, so we
+  // adopt the server's y verbatim.
+  if (gameMode === 'dontlookdown') {
+    let rawDx = 0;
+    if (keys.a) rawDx -= 1;
+    if (keys.d) rawDx += 1;
+    if (serverMe.energy > 0 && rawDx !== 0) {
+      predicted.x += rawDx * PREDICT_SPEED * dt;
+    }
+    predicted.y = serverMe.y;
+    clampPredictedToWorld(serverMe);
+    // Reconcile x gently when idle, snap on extreme drift.
+    const driftX = serverMe.x - predicted.x;
+    if (Math.abs(driftX) > 120) predicted.x = serverMe.x;
+    else if (rawDx === 0) predicted.x += driftX * 0.25;
+    return predicted;
+  }
+
+  // Top-down modes — full 2D input integration with the server's
+  // direction-normalize behaviour.
   let dx = 0, dy = 0;
   if (keys.w) dy -= 1;
   if (keys.s) dy += 1;
@@ -589,19 +673,20 @@ function tickPrediction(now, serverMe) {
   predicted.x += dx * PREDICT_SPEED * dt;
   predicted.y += dy * PREDICT_SPEED * dt;
 
-  // Only reconcile if the player isn't actively driving — otherwise the
-  // lerp drags them backward toward the server's lagged position and
-  // movement feels mushy. If the drift is huge (hit a wall server-side,
-  // collision pushed us back, etc.) snap harder.
+  // Mirror the server's walls/floors/core — keeps predicted from
+  // running past where the server allows.
+  clampPredictedToWorld(serverMe);
+
+  // After clamping, drift should be small in steady state. Only
+  // reconcile when truly out of sync (lag spike, missed packet) or
+  // when the player is idle.
   const driftX = serverMe.x - predicted.x;
   const driftY = serverMe.y - predicted.y;
   const drift = Math.hypot(driftX, driftY);
-  if (drift > 80) {
-    // Big divergence — snap halfway. Wall hits, ball pushback, etc.
-    predicted.x += driftX * 0.5;
-    predicted.y += driftY * 0.5;
+  if (drift > 200) {
+    predicted.x = serverMe.x;
+    predicted.y = serverMe.y;
   } else if (!hasInput) {
-    // Idle — gentle catch-up.
     predicted.x += driftX * 0.2;
     predicted.y += driftY * 0.2;
   }

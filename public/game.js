@@ -541,11 +541,64 @@ socket.on('escapeCutscene', (data) => {
   cutsceneTimer = 0;
 });
 
+// =========================================================
+// Client-side movement prediction
+// =========================================================
+// The server is authoritative but each input has to round-trip to Render
+// before you see motion (~200-400ms on free tier). We locally simulate
+// your own player at the same 400 px/s the server uses, then smoothly
+// lerp toward the authoritative position on each game-state update.
+// Skipped in dontlookdown because gravity + slope collision is too
+// complex to predict cleanly.
+let predicted = null;             // { x, y, lastTime } in world coords
+const PREDICT_SPEED = 400;        // must match server's p.speed
+
+function shouldPredictMovement() {
+  return gameMode === 'fishtopia' ||
+         gameMode === 'blastball'  ||
+         gameMode === 'onewayout'  ||
+         gameMode === 'coredefender';
+}
+
+function tickPrediction(now, serverMe) {
+  if (!shouldPredictMovement()) { predicted = null; return null; }
+  if (!serverMe) return null;
+  if (!predicted) {
+    predicted = { x: serverMe.x, y: serverMe.y, lastTime: now };
+    return predicted;
+  }
+  let dt = (now - predicted.lastTime) / 1000;
+  predicted.lastTime = now;
+  if (dt > 0.1) dt = 0.1; // tab inactive or jank — don't teleport
+
+  // Local input integration (same direction-normalize the server does)
+  let dx = 0, dy = 0;
+  if (keys.w) dy -= 1;
+  if (keys.s) dy += 1;
+  if (keys.a) dx -= 1;
+  if (keys.d) dx += 1;
+  const mag = Math.hypot(dx, dy);
+  if (mag > 0) { dx /= mag; dy /= mag; }
+  predicted.x += dx * PREDICT_SPEED * dt;
+  predicted.y += dy * PREDICT_SPEED * dt;
+
+  // Reconcile toward server position. ~10%/frame ≈ 0.5s catch-up.
+  predicted.x += (serverMe.x - predicted.x) * 0.1;
+  predicted.y += (serverMe.y - predicted.y) * 0.1;
+  return predicted;
+}
+
 function render() {
   if (!views.gameView.classList.contains('hidden') && myRole) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const me = gameState.players[socket.id];
     if (!me) return requestAnimationFrame(render);
+
+    // Apply local prediction. tickPrediction mutates predicted internally;
+    // we overwrite me.x/me.y so the camera + self-render use it. Server
+    // state is re-applied on the next gameState event.
+    const p = tickPrediction(performance.now(), me);
+    if (p) { me.x = p.x; me.y = p.y; }
 
     if (cutsceneActive) {
       ctx.resetTransform();

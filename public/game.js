@@ -1079,10 +1079,23 @@ function pickSkillId() {
 // ----- Mastery course + placement state -----
 let masteryCourse = null;   // { grade, pool, remaining, score, total }
 let placement = null;       // { index, results: [{ skillId, grade, correct }] }
-let answersSinceAdjustmentCheck = 0;
-let lastAdjustmentSuggestion = null; // grade we last suggested (don't spam)
+let recentAnswers = [];     // rolling window of last ~10 booleans
+let answersSinceDecline = 0; // cooldown after the player says "Stay here"
 let currentSkillId = null;
 let currentQuestion = null;
+
+const RECENT_WINDOW_MAX = 10;
+const DECLINE_COOLDOWN = 8;
+
+function recordAnswer(correct) {
+  recentAnswers.push(!!correct);
+  if (recentAnswers.length > RECENT_WINDOW_MAX) recentAnswers.shift();
+}
+
+function resetAdjustmentTracking() {
+  recentAnswers = [];
+  answersSinceDecline = 0;
+}
 
 function startMasteryCourse(grade) {
   masteryCourse = {
@@ -1185,8 +1198,7 @@ function finishPlacement() {
   placement = null;
   localUserConfig.placementDone = true;
   localUserConfig.activeGrade = placedGrade;
-  answersSinceAdjustmentCheck = 0;
-  lastAdjustmentSuggestion = null;
+  resetAdjustmentTracking();
   socket.emit('setActiveGrade', { grade: placedGrade, source: 'placement' });
   showPlacementResult(placedGrade, score, total);
 }
@@ -1211,30 +1223,32 @@ function showPlacementResult(grade, score, total) {
 // =========================================================
 // Continuous level adjustment
 // =========================================================
+// Uses a rolling window of the player's last ~10 answers. After every
+// answer we re-check accuracy. A misplacement after the placement quiz
+// gets flagged within 4 wrong answers, not 12 like before.
 function checkGradeAdjustment() {
-  answersSinceAdjustmentCheck++;
-  if (answersSinceAdjustmentCheck < 12) return;
-  answersSinceAdjustmentCheck = 0;
+  if (answersSinceDecline > 0) { answersSinceDecline--; return; }
 
   const grade = localUserConfig.activeGrade || 'K';
-  if (grade === lastAdjustmentSuggestion) return;
-  const skills = MATH_skillsForGrade(grade);
-  let c = 0, i = 0, masteredCount = 0;
-  for (const sid of skills) {
-    const st = (localUserConfig.mathProgress || {})[sid];
-    if (st) { c += st.correct || 0; i += st.incorrect || 0; if (st.mastered) masteredCount++; }
-  }
-  const total = c + i;
-  if (total < 10) return;
-  const accuracy = c / total;
   const gradeIdx = GRADE_ORDER.indexOf(grade);
+  const correctCount = recentAnswers.filter(x => x).length;
+  const total = recentAnswers.length;
+  if (total < 4) return;
+  const accuracy = correctCount / total;
 
-  if (accuracy < 0.35 && gradeIdx > 0) {
-    lastAdjustmentSuggestion = grade;
+  // Aggressive downshift: 4+ answers, <50% accuracy.
+  if (accuracy < 0.5 && gradeIdx > 0) {
     showAdjustmentModal('down', GRADE_ORDER[gradeIdx - 1], accuracy);
-  } else if (accuracy > 0.9 && gradeIdx < GRADE_ORDER.length - 1 && masteredCount < skills.length) {
-    lastAdjustmentSuggestion = grade;
-    showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
+    return;
+  }
+
+  // Upshift: 6+ answers, >85% accuracy, still skills to master.
+  if (total >= 6 && accuracy > 0.85 && gradeIdx < GRADE_ORDER.length - 1) {
+    const skills = MATH_skillsForGrade(grade);
+    const masteredCount = skills.filter(sid => (localUserConfig.mathProgress || {})[sid]?.mastered).length;
+    if (masteredCount < skills.length) {
+      showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
+    }
   }
 }
 
@@ -1262,11 +1276,13 @@ function showAdjustmentModal(direction, targetGrade, accuracy) {
   startBtn.onclick = () => {
     modal.classList.add('hidden');
     localUserConfig.activeGrade = targetGrade;
+    resetAdjustmentTracking();
     socket.emit('setActiveGrade', { grade: targetGrade, source: 'adjustment' });
     canvas.focus();
   };
   laterBtn.onclick = () => {
     modal.classList.add('hidden');
+    answersSinceDecline = DECLINE_COOLDOWN;
     canvas.focus();
   };
 }
@@ -1314,6 +1330,7 @@ function onAnswer(skillId, q, index, opts) {
   }
 
   const st = getMathState(skillId);
+  recordAnswer(correct);
   if (correct) {
     st.correct++; st.streak++;
     if (st.streak >= 5) st.mastered = true;
@@ -1424,10 +1441,7 @@ function showMasteryResult(course, nextGrade, passed) {
   document.getElementById('btn-mastery-done').onclick = () => {
     modal.classList.add('hidden');
     canvas.focus();
-    if (passed) {
-      lastAdjustmentSuggestion = null;
-      answersSinceAdjustmentCheck = 0;
-    }
+    if (passed) resetAdjustmentTracking();
   };
 }
 

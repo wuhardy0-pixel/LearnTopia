@@ -608,14 +608,11 @@ function tickPrediction(now, serverMe) {
   return predicted;
 }
 
-// Ball "prediction" for blastball: between server ticks we extrapolate
-// position using the latest authoritative velocity, so the ball moves
-// smoothly at 60 fps instead of jerking once every 33 ms. The server
-// stays fully in charge of bounces, collisions, and impulses — on every
-// gameState we just snap to the server's authoritative state. No client
-// bounce logic, no client impulse kicks. Earlier versions tried to
-// mirror those physics on the client and ended up fighting the server
-// (off-by-one ticks producing visible snap-backs).
+// Ball prediction in blastball. We integrate the server's last known
+// velocity locally and mirror its wall bounces + first-touch impulse so
+// (1) motion is smooth at 60 fps and (2) kicking the ball reacts the
+// frame you touch it. The hard part is reconciling with the server's
+// own state — see the asymmetric velocity blend in the gameState handler.
 function tickBallPrediction(now) {
   if (gameMode !== 'blastball' || !predictedBall) return;
   if (predictedBall.scored) return;
@@ -632,6 +629,49 @@ function tickBallPrediction(now) {
   const decay = Math.pow(0.985, SERVER_TICK_HZ * dt);
   predictedBall.vx *= decay;
   predictedBall.vy *= decay;
+
+  // Wall bounces + goal openings (must match server exactly).
+  const halfW = 1200, halfH = 800, goalHalf = 225;
+  const r = predictedBall.radius || 45;
+  if (predictedBall.y - r < -halfH) { predictedBall.y = -halfH + r; predictedBall.vy = Math.abs(predictedBall.vy); }
+  if (predictedBall.y + r >  halfH) { predictedBall.y =  halfH - r; predictedBall.vy = -Math.abs(predictedBall.vy); }
+  if (predictedBall.x - r < -halfW && Math.abs(predictedBall.y) > goalHalf) { predictedBall.x = -halfW + r; predictedBall.vx = Math.abs(predictedBall.vx); }
+  if (predictedBall.x + r >  halfW && Math.abs(predictedBall.y) > goalHalf) { predictedBall.x =  halfW - r; predictedBall.vx = -Math.abs(predictedBall.vx); }
+
+  // First-touch impulse — gives instant reaction when the local player
+  // kicks. Gated by wasTouching so we don't reapply at 60 Hz and
+  // overshoot the server's 30 Hz impulse rate.
+  if (predicted) {
+    const dx = predictedBall.x - predicted.x;
+    const dy = predictedBall.y - predicted.y;
+    const dist = Math.hypot(dx, dy);
+    const minDist = r + 20;
+    if (dist < minDist && dist > 0) {
+      const overlap = minDist - dist;
+      predictedBall.x += (dx / dist) * overlap;
+      predictedBall.y += (dy / dist) * overlap;
+      if (!predictedBall.wasTouching) {
+        predictedBall.vx += (dx / dist) * 3;
+        predictedBall.vy += (dy / dist) * 3;
+        predictedBall.wasTouching = true;
+        predictedBall.localKickAt = now;
+      }
+    } else {
+      predictedBall.wasTouching = false;
+    }
+  }
+}
+
+// Asymmetric velocity blend: if the server is at or beyond our local
+// prediction in magnitude (it has processed the kick or applied its
+// own impulse), trust it. If the server's velocity is smaller and in
+// the same direction, the client kicked something the server hasn't
+// seen yet — hold the client's higher value so the ball doesn't stutter
+// to a stop, but lerp toward the server slowly to avoid permanent drift.
+function blendBallAxis(client, server) {
+  if (Math.sign(client) !== Math.sign(server)) return server;     // direction changed → trust server
+  if (Math.abs(server) >= Math.abs(client)) return server;         // server caught up
+  return client * 0.9 + server * 0.1;                              // server lagging client's local kick
 }
 
 function render() {
@@ -1523,19 +1563,30 @@ socket.on('gameState', (data) => {
   if (gameState.stations && gameMap) {
     gameMap.stations = gameState.stations;
   }
-  // Reconcile ball prediction with the authoritative server state.
-  // Direct snap — no lerp. Between server ticks we extrapolate with the
-  // server's velocity, so snapping every 33 ms is essentially invisible
-  // when motion is steady, and decisive when the server bounces or
-  // impulses the ball (predicted would have been wrong then anyway).
+  // Reconcile ball state with the server. Velocity blend is asymmetric
+  // (see blendBallAxis) so a fresh local kick doesn't get snapped to a
+  // stop before the server has processed it. Position snaps only when
+  // we've taken the server's velocity verbatim — otherwise we'd yank
+  // the ball backward to the server's lagged position every 33 ms while
+  // its local-impulse velocity is still rolling.
   if (data.ball) {
     if (!predictedBall) {
-      predictedBall = { x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, radius: data.ball.radius, scored: data.ball.scored, lastTime: performance.now() };
+      predictedBall = { x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, radius: data.ball.radius, scored: data.ball.scored, lastTime: performance.now(), wasTouching: false };
     } else {
-      predictedBall.x = data.ball.x;
-      predictedBall.y = data.ball.y;
-      predictedBall.vx = data.ball.vx;
-      predictedBall.vy = data.ball.vy;
+      const newVx = blendBallAxis(predictedBall.vx, data.ball.vx);
+      const newVy = blendBallAxis(predictedBall.vy, data.ball.vy);
+      const tookServerVel = newVx === data.ball.vx && newVy === data.ball.vy;
+      if (tookServerVel) {
+        predictedBall.x = data.ball.x;
+        predictedBall.y = data.ball.y;
+      } else {
+        // Server hasn't caught up — tug position toward server very gently
+        // so we self-correct any small drift without yanking visibly.
+        predictedBall.x += (data.ball.x - predictedBall.x) * 0.05;
+        predictedBall.y += (data.ball.y - predictedBall.y) * 0.05;
+      }
+      predictedBall.vx = newVx;
+      predictedBall.vy = newVy;
       predictedBall.radius = data.ball.radius;
       predictedBall.scored = data.ball.scored;
     }

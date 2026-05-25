@@ -1358,12 +1358,22 @@ function onPlacementAnswer(skillId, q, idx) {
 }
 
 function finishPlacement() {
-  // Pick the highest-grade question they got right.
+  // Stair-climb placement: walk results bottom-up, only count "ceiling"
+  // grades you reach before stalling. Stop after 2 misses in a row so a
+  // lucky guess on a far-above-level question can't overplace you.
+  // (A 1st-grader who answered 7/12 with random luck on the higher
+  // questions used to land in Grade 7; now they place at the highest
+  // grade where they consistently answered before stumbling.)
   let highestIdx = -1;
+  let consecMisses = 0;
   for (const r of placement.results) {
     if (r.correct) {
       const idx = GRADE_ORDER.indexOf(r.grade);
       if (idx > highestIdx) highestIdx = idx;
+      consecMisses = 0;
+    } else {
+      consecMisses++;
+      if (consecMisses >= 2) break;
     }
   }
   const placedGrade = highestIdx >= 0 ? GRADE_ORDER[highestIdx] : 'K';
@@ -1397,31 +1407,42 @@ function showPlacementResult(grade, score, total) {
 // =========================================================
 // Continuous level adjustment
 // =========================================================
-// Uses a rolling window of the player's last ~10 answers. After every
-// answer we re-check accuracy. A misplacement after the placement quiz
-// gets flagged within 4 wrong answers, not 12 like before.
+// Two checks each fire on every answer:
+//   - Downshift: 2+ wrong of the last 3 answers (or first 2 of session
+//     if the player just landed in this grade). Catches misplacement
+//     within ~2 questions instead of waiting for a 10-question window.
+//   - Upshift: 6+ answers in window with > 85% accuracy and at least
+//     one unmastered skill — the player is breezing through, offer the
+//     next level. Mastery course still handles the fully-mastered case.
 function checkGradeAdjustment() {
   if (answersSinceDecline > 0) { answersSinceDecline--; return; }
 
   const grade = localUserConfig.activeGrade || 'K';
   const gradeIdx = GRADE_ORDER.indexOf(grade);
-  const correctCount = recentAnswers.filter(x => x).length;
-  const total = recentAnswers.length;
-  if (total < 4) return;
-  const accuracy = correctCount / total;
 
-  // Aggressive downshift: 4+ answers, <50% accuracy.
-  if (accuracy < 0.5 && gradeIdx > 0) {
-    showAdjustmentModal('down', GRADE_ORDER[gradeIdx - 1], accuracy);
-    return;
+  // Downshift: look at the last 3 answers. 2+ wrong → suggest dropping.
+  const tail = recentAnswers.slice(-3);
+  if (tail.length >= 2 && gradeIdx > 0) {
+    const wrong = tail.filter(x => !x).length;
+    if (wrong >= 2) {
+      const correctCount = recentAnswers.filter(x => x).length;
+      const accuracy = recentAnswers.length > 0 ? correctCount / recentAnswers.length : 0;
+      showAdjustmentModal('down', GRADE_ORDER[gradeIdx - 1], accuracy);
+      return;
+    }
   }
 
-  // Upshift: 6+ answers, >85% accuracy, still skills to master.
-  if (total >= 6 && accuracy > 0.85 && gradeIdx < GRADE_ORDER.length - 1) {
-    const skills = MATH_skillsForGrade(grade);
-    const masteredCount = skills.filter(sid => (localUserConfig.mathProgress || {})[sid]?.mastered).length;
-    if (masteredCount < skills.length) {
-      showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
+  // Upshift: needs a longer track record so we don't yank an early-streak
+  // player up too fast.
+  if (recentAnswers.length >= 6 && gradeIdx < GRADE_ORDER.length - 1) {
+    const correctCount = recentAnswers.filter(x => x).length;
+    const accuracy = correctCount / recentAnswers.length;
+    if (accuracy > 0.85) {
+      const skills = MATH_skillsForGrade(grade);
+      const masteredCount = skills.filter(sid => (localUserConfig.mathProgress || {})[sid]?.mastered).length;
+      if (masteredCount < skills.length) {
+        showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
+      }
     }
   }
 }

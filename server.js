@@ -123,12 +123,15 @@ io.on('connection', (socket) => {
     socket.emit('authSuccess', { username, data: u });
   });
 
-  socket.on('setActiveGrade', ({ grade, source }) => {
+  socket.on('setActiveGrade', ({ grade, source, abilityScore }) => {
     const sMap = socketMap[socket.id];
     if (!sMap || !sMap.username || !grade) return;
     const u = users[sMap.username];
     if (!u) return;
     u.activeGrade = grade;
+    // Allow callers (placement) to update ability atomically so the
+    // authSuccess echo below carries a consistent snapshot.
+    if (typeof abilityScore === 'number') u.abilityScore = abilityScore;
     if (source === 'placement') u.placementDone = true;
     socket.emit('authSuccess', { username: sMap.username, data: u });
   });

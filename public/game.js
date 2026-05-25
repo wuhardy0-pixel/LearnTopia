@@ -1451,8 +1451,11 @@ function finishPlacement() {
   localUserConfig.activeGrade = placedGrade;
   localUserConfig.abilityScore = initialAbility;
   resetAdjustmentTracking();
-  socket.emit('setActiveGrade', { grade: placedGrade, source: 'placement' });
-  socket.emit('setAbilityScore', { abilityScore: initialAbility, activeGrade: placedGrade });
+  // Send both fields in ONE event so the server's authSuccess echo
+  // contains the consistent post-placement snapshot. (Two separate
+  // events caused the echo from the first to overwrite the local
+  // abilityScore with the pre-placement default of 0.)
+  socket.emit('setActiveGrade', { grade: placedGrade, source: 'placement', abilityScore: initialAbility });
   showPlacementResult(placedGrade, score, total);
 }
 

@@ -87,6 +87,7 @@ function cacheMathState() {
     localStorage.setItem(MATH_CACHE_KEY(myUsername), JSON.stringify({
       placementDone: !!localUserConfig.placementDone,
       activeGrade: localUserConfig.activeGrade || 'K',
+      abilityScore: typeof localUserConfig.abilityScore === 'number' ? localUserConfig.abilityScore : 0,
       mathProgress: localUserConfig.mathProgress || {},
       gradeCompleted: localUserConfig.gradeCompleted || {}
     }));
@@ -115,12 +116,14 @@ function maybeRestoreMathState() {
 
   localUserConfig.placementDone = cached.placementDone || localUserConfig.placementDone;
   localUserConfig.activeGrade = cached.activeGrade || localUserConfig.activeGrade;
+  if (typeof cached.abilityScore === 'number') localUserConfig.abilityScore = cached.abilityScore;
   localUserConfig.mathProgress = cached.mathProgress || localUserConfig.mathProgress;
   localUserConfig.gradeCompleted = cached.gradeCompleted || localUserConfig.gradeCompleted;
 
   socket.emit('restoreUserState', {
     placementDone: localUserConfig.placementDone,
     activeGrade: localUserConfig.activeGrade,
+    abilityScore: localUserConfig.abilityScore,
     mathProgress: localUserConfig.mathProgress,
     gradeCompleted: localUserConfig.gradeCompleted
   });
@@ -1230,10 +1233,80 @@ function getGradeCompleted() {
   return localUserConfig.gradeCompleted;
 }
 
+// =========================================================
+// Ability score (1-parameter IRT / Elo) — the continuous level
+// representing where the student has a ~50 % chance of answering
+// correctly. Sampling targets the boundary so we spend time on what
+// they're actually figuring out, not stuff they already know.
+// =========================================================
+function gradeToIdx(grade) {
+  const i = GRADE_ORDER.indexOf(grade);
+  return i >= 0 ? i : 0;
+}
+function abilityToGrade(ability) {
+  // Floor (not round) so the displayed grade only ticks up when the
+  // student has fully crossed into the next level — feels stable and
+  // gives the player a clean "in Grade N, climbing toward N+1" identity.
+  const i = Math.max(0, Math.min(GRADE_ORDER.length - 1, Math.floor(ability)));
+  return GRADE_ORDER[i];
+}
+function getAbilityScore() {
+  if (typeof localUserConfig.abilityScore !== 'number' || !isFinite(localUserConfig.abilityScore)) {
+    localUserConfig.abilityScore = gradeToIdx(localUserConfig.activeGrade || 'K');
+  }
+  return localUserConfig.abilityScore;
+}
+function setAbilityScore(score, opts = {}) {
+  const clamped = Math.max(0, Math.min(GRADE_ORDER.length - 0.01, score));
+  localUserConfig.abilityScore = clamped;
+  const newGrade = abilityToGrade(clamped);
+  if (newGrade !== localUserConfig.activeGrade) localUserConfig.activeGrade = newGrade;
+  if (!opts.skipSync) {
+    socket.emit('setAbilityScore', { abilityScore: clamped, activeGrade: localUserConfig.activeGrade });
+  }
+}
+
+// Elo update after one answer. k is the learning rate in "grades per
+// answer at maximum surprise". Bigger = faster adaptation, more jitter.
+const ELO_K = 0.5;
+function updateAbility(questionGrade, correct) {
+  const ability = getAbilityScore();
+  const diff = gradeToIdx(questionGrade);
+  // P(correct | ability, diff) = 1 / (1 + exp(diff - ability))
+  const expected = 1 / (1 + Math.exp(diff - ability));
+  const result = correct ? 1 : 0;
+  setAbilityScore(ability + ELO_K * (result - expected));
+}
+
+// Question selection samples around the ability boundary. The floor
+// grade is what they're "solid on", the ceiling is the next stretch.
+// Weighted by fractional position — ability 6.7 picks Grade 7 ~70 %
+// of the time, Grade 6 ~30 %.
 function pickSkillId() {
-  const grade = localUserConfig.activeGrade || 'K';
+  const ability = getAbilityScore();
+  const floor = Math.max(0, Math.floor(ability));
+  const ceil = Math.min(GRADE_ORDER.length - 1, Math.ceil(ability));
+  const fractional = ability - Math.floor(ability);
+  const targetIdx = (floor === ceil)
+    ? floor
+    : (Math.random() < fractional ? ceil : floor);
+  const grade = GRADE_ORDER[targetIdx];
   const ids = MATH_skillsForGrade(grade);
-  if (!ids.length) return null;
+  if (!ids.length) {
+    // Fallback: find the closest grade that actually has skills.
+    for (let off = 1; off < GRADE_ORDER.length; off++) {
+      for (const j of [targetIdx - off, targetIdx + off]) {
+        if (j < 0 || j >= GRADE_ORDER.length) continue;
+        const altIds = MATH_skillsForGrade(GRADE_ORDER[j]);
+        if (altIds.length) return pickWeightedSkill(altIds);
+      }
+    }
+    return null;
+  }
+  return pickWeightedSkill(ids);
+}
+
+function pickWeightedSkill(ids) {
   const weighted = ids.map(id => {
     const st = getMathState(id);
     const total = st.correct + st.incorrect;
@@ -1358,17 +1431,11 @@ function onPlacementAnswer(skillId, q, idx) {
 }
 
 function finishPlacement() {
-  // Strict-stop placement. Climb is bottom-up: the moment you miss a
-  // question, the placement freezes at the last grade you got right.
-  // Lucky guesses on harder questions further down the list cannot
-  // bridge over a miss — that bridge is what kept overplacing students
-  // (1st-grader landed in Grade 5 because a couple of higher questions
-  // randomly came up right between her misses).
-  //
-  // Under-placement is fine: the adjustment system bumps them back up
-  // within a handful of questions once they're cruising. Over-placement
-  // is worse because it puts a struggling student in front of material
-  // they can't yet do.
+  // Strict-stop ceiling (where the climb halted) tells us the highest
+  // grade the player was solid on. Their *true ability* sits between
+  // that ceiling and the next grade — i.e. ceiling + 0.5. After this
+  // initial seed, every answer Elo-updates the ability score so it
+  // converges to the actual boundary regardless of placement noise.
   let highestIdx = -1;
   for (const r of placement.results) {
     if (!r.correct) break;
@@ -1376,13 +1443,16 @@ function finishPlacement() {
     if (idx > highestIdx) highestIdx = idx;
   }
   const placedGrade = highestIdx >= 0 ? GRADE_ORDER[highestIdx] : 'K';
+  const initialAbility = highestIdx >= 0 ? highestIdx + 0.5 : 0;
   const score = placement.results.filter(r => r.correct).length;
   const total = placement.results.length;
   placement = null;
   localUserConfig.placementDone = true;
   localUserConfig.activeGrade = placedGrade;
+  localUserConfig.abilityScore = initialAbility;
   resetAdjustmentTracking();
   socket.emit('setActiveGrade', { grade: placedGrade, source: 'placement' });
+  socket.emit('setAbilityScore', { abilityScore: initialAbility, activeGrade: placedGrade });
   showPlacementResult(placedGrade, score, total);
 }
 
@@ -1449,10 +1519,13 @@ function checkGradeAdjustment() {
 }
 
 function autoDownshift(targetGrade) {
-  localUserConfig.activeGrade = targetGrade;
+  // Snap ability to the target grade's boundary so the Elo update
+  // doesn't have to grind down through many wrong answers. setAbilityScore
+  // also syncs activeGrade and emits to the server.
+  const targetIdx = gradeToIdx(targetGrade);
+  setAbilityScore(targetIdx + 0.3);
   resetAdjustmentTracking();
   answersSinceDecline = 3; // small cooldown so we don't cascade instantly
-  socket.emit('setActiveGrade', { grade: targetGrade, source: 'adjustment' });
   const toast = document.getElementById('feedback-toast');
   if (toast) {
     toast.textContent = `🪜 Easier level — switched to ${MATH_gradeLabel(targetGrade)}`;
@@ -1486,9 +1559,11 @@ function showAdjustmentModal(direction, targetGrade, accuracy) {
   modal.classList.remove('hidden');
   startBtn.onclick = () => {
     modal.classList.add('hidden');
-    localUserConfig.activeGrade = targetGrade;
+    // For upshift, set ability slightly into the new grade so we still
+    // sample the previous grade occasionally as warmup.
+    const targetIdx = gradeToIdx(targetGrade);
+    setAbilityScore(targetIdx + 0.3);
     resetAdjustmentTracking();
-    socket.emit('setActiveGrade', { grade: targetGrade, source: 'adjustment' });
     canvas.focus();
   };
   laterBtn.onclick = () => {
@@ -1529,12 +1604,14 @@ function presentSkillQuestion(skillId, opts) {
 
 function onAnswer(skillId, q, index, opts) {
   const correct = index === q.answerIndex;
+  const skillGrade = MATH_SKILLS[skillId] && MATH_SKILLS[skillId].grade;
   document.getElementById('question-modal').classList.add('hidden');
 
   if (opts.masteryMode && masteryCourse) {
     if (correct) masteryCourse.score++;
     masteryCourse.remaining--;
     socket.emit('interact', { type: 'answer', skillId, correct, masteryGrade: masteryCourse.grade });
+    if (skillGrade) updateAbility(skillGrade, correct);
     if (!correct) showExplainModal(skillId, q, proceedMastery);
     else proceedMastery();
     return;
@@ -1542,6 +1619,7 @@ function onAnswer(skillId, q, index, opts) {
 
   const st = getMathState(skillId);
   recordAnswer(correct);
+  if (skillGrade) updateAbility(skillGrade, correct);
   if (correct) {
     st.correct++; st.streak++;
     if (st.streak >= 5) st.mastered = true;

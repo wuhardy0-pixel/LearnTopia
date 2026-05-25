@@ -104,6 +104,7 @@ io.on('connection', (socket) => {
       mathProgress: {},
       gradeCompleted: {},
       activeGrade: 'K',
+      abilityScore: 0,
       placementDone: false
     };
     socketMap[socket.id] = { username, code: null };
@@ -117,6 +118,7 @@ io.on('connection', (socket) => {
     if (!u.gradeCompleted) u.gradeCompleted = {};
     if (!u.activeGrade) u.activeGrade = 'K';
     if (typeof u.placementDone !== 'boolean') u.placementDone = false;
+    if (typeof u.abilityScore !== 'number') u.abilityScore = 0;
     socketMap[socket.id] = { username, code: null };
     socket.emit('authSuccess', { username, data: u });
   });
@@ -131,6 +133,17 @@ io.on('connection', (socket) => {
     socket.emit('authSuccess', { username: sMap.username, data: u });
   });
 
+  socket.on('setAbilityScore', ({ abilityScore, activeGrade }) => {
+    const sMap = socketMap[socket.id];
+    if (!sMap || !sMap.username) return;
+    const u = users[sMap.username];
+    if (!u) return;
+    if (typeof abilityScore === 'number') u.abilityScore = abilityScore;
+    if (typeof activeGrade === 'string') u.activeGrade = activeGrade;
+    // No authSuccess echo — this fires after every answer, the client
+    // already holds the value it just sent up.
+  });
+
   // Server has no persistent storage (Render free tier). The client backs
   // up math state in localStorage and rehydrates the server here when its
   // in-memory copy is empty.
@@ -141,6 +154,7 @@ io.on('connection', (socket) => {
     if (!u) return;
     if (typeof state.placementDone === 'boolean') u.placementDone = state.placementDone;
     if (typeof state.activeGrade === 'string') u.activeGrade = state.activeGrade;
+    if (typeof state.abilityScore === 'number') u.abilityScore = state.abilityScore;
     if (state.mathProgress && typeof state.mathProgress === 'object') u.mathProgress = state.mathProgress;
     if (state.gradeCompleted && typeof state.gradeCompleted === 'object') u.gradeCompleted = state.gradeCompleted;
     // No authSuccess echo — the client already holds this exact state.

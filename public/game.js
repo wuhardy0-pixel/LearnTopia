@@ -1358,23 +1358,22 @@ function onPlacementAnswer(skillId, q, idx) {
 }
 
 function finishPlacement() {
-  // Stair-climb placement: walk results bottom-up, only count "ceiling"
-  // grades you reach before stalling. Stop after 2 misses in a row so a
-  // lucky guess on a far-above-level question can't overplace you.
-  // (A 1st-grader who answered 7/12 with random luck on the higher
-  // questions used to land in Grade 7; now they place at the highest
-  // grade where they consistently answered before stumbling.)
+  // Strict-stop placement. Climb is bottom-up: the moment you miss a
+  // question, the placement freezes at the last grade you got right.
+  // Lucky guesses on harder questions further down the list cannot
+  // bridge over a miss — that bridge is what kept overplacing students
+  // (1st-grader landed in Grade 5 because a couple of higher questions
+  // randomly came up right between her misses).
+  //
+  // Under-placement is fine: the adjustment system bumps them back up
+  // within a handful of questions once they're cruising. Over-placement
+  // is worse because it puts a struggling student in front of material
+  // they can't yet do.
   let highestIdx = -1;
-  let consecMisses = 0;
   for (const r of placement.results) {
-    if (r.correct) {
-      const idx = GRADE_ORDER.indexOf(r.grade);
-      if (idx > highestIdx) highestIdx = idx;
-      consecMisses = 0;
-    } else {
-      consecMisses++;
-      if (consecMisses >= 2) break;
-    }
+    if (!r.correct) break;
+    const idx = GRADE_ORDER.indexOf(r.grade);
+    if (idx > highestIdx) highestIdx = idx;
   }
   const placedGrade = highestIdx >= 0 ? GRADE_ORDER[highestIdx] : 'K';
   const score = placement.results.filter(r => r.correct).length;
@@ -1407,33 +1406,35 @@ function showPlacementResult(grade, score, total) {
 // =========================================================
 // Continuous level adjustment
 // =========================================================
-// Two checks each fire on every answer:
-//   - Downshift: 2+ wrong of the last 3 answers (or first 2 of session
-//     if the player just landed in this grade). Catches misplacement
-//     within ~2 questions instead of waiting for a 10-question window.
-//   - Upshift: 6+ answers in window with > 85% accuracy and at least
-//     one unmastered skill — the player is breezing through, offer the
-//     next level. Mastery course still handles the fully-mastered case.
+// Downshift is now AUTOMATIC: the player (especially a young student)
+// shouldn't have to read a modal and pick the right button to drop a
+// level when they're struggling. We just switch grades and tell them.
+// Upshift still asks first because moving up is more invasive.
+//
+// Triggers on every answer:
+//   2+ wrong in last 3 answers → drop one grade
+//   3+ wrong in last 3 answers → drop two grades (very far above level)
+//   ≥6 answers @ >85 % accuracy with unmastered skills → offer up
 function checkGradeAdjustment() {
   if (answersSinceDecline > 0) { answersSinceDecline--; return; }
 
   const grade = localUserConfig.activeGrade || 'K';
   const gradeIdx = GRADE_ORDER.indexOf(grade);
 
-  // Downshift: look at the last 3 answers. 2+ wrong → suggest dropping.
+  // Auto-downshift on recent misses.
   const tail = recentAnswers.slice(-3);
   if (tail.length >= 2 && gradeIdx > 0) {
     const wrong = tail.filter(x => !x).length;
     if (wrong >= 2) {
-      const correctCount = recentAnswers.filter(x => x).length;
-      const accuracy = recentAnswers.length > 0 ? correctCount / recentAnswers.length : 0;
-      showAdjustmentModal('down', GRADE_ORDER[gradeIdx - 1], accuracy);
+      const drop = (wrong >= 3) ? 2 : 1;
+      const targetIdx = Math.max(0, gradeIdx - drop);
+      const targetGrade = GRADE_ORDER[targetIdx];
+      autoDownshift(targetGrade);
       return;
     }
   }
 
-  // Upshift: needs a longer track record so we don't yank an early-streak
-  // player up too fast.
+  // Upshift still prompts (no surprise jumps to harder material).
   if (recentAnswers.length >= 6 && gradeIdx < GRADE_ORDER.length - 1) {
     const correctCount = recentAnswers.filter(x => x).length;
     const accuracy = correctCount / recentAnswers.length;
@@ -1444,6 +1445,21 @@ function checkGradeAdjustment() {
         showAdjustmentModal('up', GRADE_ORDER[gradeIdx + 1], accuracy);
       }
     }
+  }
+}
+
+function autoDownshift(targetGrade) {
+  localUserConfig.activeGrade = targetGrade;
+  resetAdjustmentTracking();
+  answersSinceDecline = 3; // small cooldown so we don't cascade instantly
+  socket.emit('setActiveGrade', { grade: targetGrade, source: 'adjustment' });
+  const toast = document.getElementById('feedback-toast');
+  if (toast) {
+    toast.textContent = `🪜 Easier level — switched to ${MATH_gradeLabel(targetGrade)}`;
+    toast.style.backgroundColor = '#0ea5e9';
+    toast.style.color = '#ffffff';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3500);
   }
 }
 

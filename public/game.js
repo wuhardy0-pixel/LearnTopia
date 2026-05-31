@@ -542,23 +542,52 @@ function updateInput() {
 // =========================================================
 // Touch controls (mobile)
 // =========================================================
-// IS_TOUCH only marks the body so CSS can show the overlay and so
-// showView() (above) can toggle .hidden on #touch-controls when the
-// player enters / leaves the game view. The whole detection has to
-// happen at script load time — defer-loaded so document.body exists.
-// Belt-and-suspenders detection: ontouchstart and maxTouchPoints miss
-// some devices (iPad on recent iPadOS reports as desktop), so we also
-// check the coarse-pointer media query.
-const IS_TOUCH = ('ontouchstart' in window)
-              || (navigator.maxTouchPoints > 0)
-              || (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches);
-if (IS_TOUCH) document.body.classList.add('touch-device');
-// If we boot already inside the game view (e.g. hot reload after a
-// match), reveal the overlay immediately.
-if (IS_TOUCH && !views.gameView.classList.contains('hidden')) {
-  const tcBoot = document.getElementById('touch-controls');
-  if (tcBoot) tcBoot.classList.remove('hidden');
+// Detect touch capability up front. Belt-and-suspenders because no
+// single check covers every device — iPadOS-desktop-mode doesn't set
+// ontouchstart, some Surface laptops report 0 maxTouchPoints, etc.
+function _detectTouch() {
+  return ('ontouchstart' in window)
+      || (navigator.maxTouchPoints > 0)
+      || (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches);
 }
+let IS_TOUCH = _detectTouch();
+// Persist a manual override across reloads so you can pin the
+// preference once you find it.
+try {
+  const pref = localStorage.getItem('learntopia:touch-controls');
+  if (pref === '1') IS_TOUCH = true;
+  if (pref === '0') IS_TOUCH = false;
+} catch (e) {}
+
+function setTouchControlsVisible(on, opts) {
+  IS_TOUCH = !!on;
+  document.body.classList.toggle('touch-device', IS_TOUCH);
+  const tc = document.getElementById('touch-controls');
+  if (tc) {
+    if (IS_TOUCH && !views.gameView.classList.contains('hidden')) tc.classList.remove('hidden');
+    else if (!IS_TOUCH) tc.classList.add('hidden');
+  }
+  if (opts && opts.persist) {
+    try { localStorage.setItem('learntopia:touch-controls', IS_TOUCH ? '1' : '0'); } catch (e) {}
+  }
+}
+setTouchControlsVisible(IS_TOUCH);
+
+// Promote to touch mode the first time we see an actual touchstart —
+// real fingers always win over our heuristics.
+window.addEventListener('touchstart', () => {
+  if (!IS_TOUCH) setTouchControlsVisible(true);
+}, { once: true, passive: true });
+
+// Manual toggle in the HUD so you can force the overlay regardless
+// of detection (handy on hybrid laptops or for testing on desktop).
+(function setupTouchToggle() {
+  const btn = document.getElementById('btn-toggle-touch');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    setTouchControlsVisible(!IS_TOUCH, { persist: true });
+  });
+})();
 
 // ----- Virtual joystick -----
 (function setupJoystick() {

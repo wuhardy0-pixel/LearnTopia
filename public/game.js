@@ -1282,6 +1282,12 @@ function updateAbility(questionGrade, correct) {
 // grade is what they're "solid on", the ceiling is the next stretch.
 // Weighted by fractional position — ability 6.7 picks Grade 7 ~70 %
 // of the time, Grade 6 ~30 %.
+//
+// Knowledge-graph remediation: when the picked skill is one the player
+// is actually struggling with (3+ attempts, <40 % accuracy, unmastered),
+// half the time we drop to the deepest unmastered prerequisite found by
+// walking MATH_PREREQS. That stops us spinning on a Grade 5 question
+// when the actual gap is a Grade 3 multiplication fact.
 function pickSkillId() {
   const ability = getAbilityScore();
   const floor = Math.max(0, Math.floor(ability));
@@ -1292,18 +1298,31 @@ function pickSkillId() {
     : (Math.random() < fractional ? ceil : floor);
   const grade = GRADE_ORDER[targetIdx];
   const ids = MATH_skillsForGrade(grade);
+  let picked;
   if (!ids.length) {
     // Fallback: find the closest grade that actually has skills.
     for (let off = 1; off < GRADE_ORDER.length; off++) {
       for (const j of [targetIdx - off, targetIdx + off]) {
         if (j < 0 || j >= GRADE_ORDER.length) continue;
         const altIds = MATH_skillsForGrade(GRADE_ORDER[j]);
-        if (altIds.length) return pickWeightedSkill(altIds);
+        if (altIds.length) { picked = pickWeightedSkill(altIds); break; }
       }
+      if (picked) break;
     }
-    return null;
+    if (!picked) return null;
+  } else {
+    picked = pickWeightedSkill(ids);
   }
-  return pickWeightedSkill(ids);
+
+  // Drop to the underlying gap if this skill is genuinely struggling.
+  const st = getMathState(picked);
+  const total = st.correct + st.incorrect;
+  const accuracy = total > 0 ? st.correct / total : 0.5;
+  if (!st.mastered && total >= 3 && accuracy < 0.4 && Math.random() < 0.5) {
+    const gap = MATH_findGapPrereq(picked, localUserConfig.mathProgress || {});
+    if (gap && MATH_SKILLS[gap]) return gap;
+  }
+  return picked;
 }
 
 function pickWeightedSkill(ids) {

@@ -3054,6 +3054,206 @@ const MATH_SKILLS = {
 
 };
 
+// =========================================================
+// Knowledge graph: prerequisite DAG over every skill.
+// =========================================================
+// Each entry maps a skillId → its direct prerequisite skillIds.
+// Structure follows the Common Core State Standards Progressions
+// (achievethecore.org/page/254 — Counting & Cardinality → Operations
+// → Fractions → Ratios → Algebra → Functions; separate Geometry track).
+// When a student stalls on a skill, the engine walks back through this
+// graph to find the deepest unmastered ancestor — the actual gap that
+// needs remediation, not just "the current question is hard."
+const MATH_PREREQS = {
+  // ----- KINDERGARTEN -----
+  'k-count-objects':   [],
+  'k-count-forward':   ['k-count-objects'],
+  'k-count-backward':  ['k-count-forward'],
+  'k-compare-numbers': ['k-count-objects', 'k-count-forward'],
+  'k-compare-symbol':  ['k-compare-numbers'],
+  'k-add-within-5':    ['k-count-forward'],
+  'k-add-within-10':   ['k-add-within-5'],
+  'k-sub-within-5':    ['k-count-backward', 'k-add-within-5'],
+  'k-sub-within-10':   ['k-sub-within-5', 'k-add-within-10'],
+  'k-make-10':         ['k-add-within-10'],
+  'k-decompose':       ['k-make-10', 'k-sub-within-10'],
+  'k-word-add':        ['k-add-within-10'],
+  'k-word-sub':        ['k-sub-within-10'],
+  'k-shapes':          [],
+  'k-patterns':        ['k-count-objects'],
+
+  // ----- GRADE 1 -----
+  '1-add-within-20':   ['k-add-within-10', 'k-make-10'],
+  '1-sub-within-20':   ['k-sub-within-10'],
+  '1-place-value':     ['k-count-objects'],
+  '1-compare-2digit':  ['1-place-value', 'k-compare-numbers'],
+  '1-skip-count-2':    ['k-count-forward'],
+  '1-skip-count-5':    ['1-skip-count-2'],
+  '1-skip-count-10':   ['1-skip-count-5', '1-place-value'],
+  '1-add-10':          ['1-place-value', '1-skip-count-10'],
+  '1-fact-family':     ['k-add-within-10', 'k-sub-within-10', 'k-decompose'],
+  '1-time-hour':       ['k-count-objects'],
+  '1-money-coins':     ['1-skip-count-5', '1-add-within-20'],
+  '1-add-three':       ['1-add-within-20', 'k-make-10'],
+  '1-compare-length':  ['k-compare-numbers'],
+  '1-halves-fourths':  ['k-shapes', 'k-decompose'],
+
+  // ----- GRADE 2 -----
+  '2-add-2digit':         ['1-add-within-20', '1-place-value'],
+  '2-sub-2digit':         ['1-sub-within-20', '1-place-value'],
+  '2-place-value-hundreds':['1-place-value'],
+  '2-even-odd':           ['1-skip-count-2'],
+  '2-repeated-add':       ['1-add-within-20'],
+  '2-time-half-hour':     ['1-time-hour', '1-skip-count-5'],
+  '2-money-mix':          ['1-money-coins'],
+  '2-arrays':             ['2-repeated-add'],
+  '2-add-3digit':         ['2-add-2digit', '2-place-value-hundreds'],
+  '2-sub-3digit':         ['2-sub-2digit', '2-place-value-hundreds'],
+  '2-time-5min':          ['1-time-hour', '1-skip-count-5'],
+  '2-bar-graph':          ['k-count-objects', '1-add-within-20'],
+
+  // ----- GRADE 3 -----
+  '3-mult-basic':       ['2-repeated-add', '2-arrays'],
+  '3-mult-tables':      ['3-mult-basic'],
+  '3-div-basic':        ['3-mult-tables', 'k-decompose'],
+  '3-fractions-intro':  ['1-halves-fourths'],
+  '3-perimeter':        ['2-add-2digit', 'k-shapes'],
+  '3-area-rect':        ['3-mult-tables', 'k-shapes'],
+  '3-round-10':         ['1-place-value', 'k-compare-symbol'],
+  '3-mult-by-tens':     ['3-mult-tables', '1-place-value'],
+  '3-equiv-fractions':  ['3-fractions-intro', '3-mult-tables'],
+  '3-compare-fractions':['3-fractions-intro', '3-mult-tables'],
+  '3-elapsed-time':     ['2-time-5min', '2-add-2digit'],
+  '3-area-tiles':       ['2-arrays', 'k-count-objects'],
+
+  // ----- GRADE 4 -----
+  '4-mult-multi-digit':     ['3-mult-tables', '3-mult-by-tens'],
+  '4-long-div':             ['3-div-basic', '4-mult-multi-digit'],
+  '4-fractions-same-denom': ['3-fractions-intro', 'k-add-within-10'],
+  '4-decimals-tenths':      ['3-fractions-intro', '1-place-value'],
+  '4-factors':              ['3-mult-tables', '3-div-basic'],
+  '4-prime-composite':      ['4-factors'],
+  '4-multi-sub':            ['2-sub-3digit'],
+  '4-div-remainder':        ['4-long-div'],
+  '4-compare-decimals':     ['4-decimals-tenths', 'k-compare-symbol'],
+  '4-frac-times-whole':     ['4-fractions-same-denom', '3-mult-tables'],
+
+  // ----- GRADE 5 -----
+  '5-add-fractions-diff':  ['4-fractions-same-denom', '3-equiv-fractions'],
+  '5-mult-fractions':      ['4-frac-times-whole'],
+  '5-decimal-mult':        ['4-decimals-tenths', '4-mult-multi-digit'],
+  '5-order-of-ops':        ['3-mult-tables', '2-add-3digit'],
+  '5-volume':              ['3-area-rect', '4-mult-multi-digit'],
+  '5-exponents':           ['3-mult-tables', '2-repeated-add'],
+  '5-sub-fractions-diff':  ['5-add-fractions-diff'],
+  '5-div-fractions':       ['5-mult-fractions'],
+  '5-mixed-improper':      ['3-equiv-fractions', '4-fractions-same-denom'],
+  '5-powers-10':           ['5-exponents'],
+  '5-sub-decimals':        ['4-decimals-tenths', '2-sub-3digit'],
+
+  // ----- GRADE 6 -----
+  '6-ratios':           ['4-factors', '3-mult-tables'],
+  '6-percent-of':       ['4-decimals-tenths', '5-decimal-mult'],
+  '6-int-add':          ['k-add-within-10', 'k-sub-within-10'],
+  '6-int-sub':          ['6-int-add'],
+  '6-gcf':              ['4-factors'],
+  '6-eval-expr':        ['3-mult-tables', '2-add-2digit'],
+  '6-coord-quadrant':   ['k-shapes', '6-int-sub'],
+  '6-ratio-tables':     ['6-ratios', '3-mult-tables'],
+  '6-stats-mmr':        ['k-compare-numbers', '2-add-3digit', '3-div-basic'],
+  '6-inequality-solve': ['6-eval-expr', 'k-compare-symbol'],
+  '6-surface-area':     ['3-area-rect', '4-mult-multi-digit'],
+
+  // ----- GRADE 7 -----
+  '7-proportions':    ['6-ratios', '6-ratio-tables'],
+  '7-percent-change': ['6-percent-of'],
+  '7-int-mult':       ['6-int-add', '3-mult-tables'],
+  '7-int-div':        ['7-int-mult', '3-div-basic'],
+  '7-two-step-eq':    ['6-eval-expr', '6-int-sub'],
+  '7-probability':    ['3-fractions-intro'],
+  '7-circle-area':    ['5-exponents', '5-decimal-mult'],
+  '7-circumference':  ['5-decimal-mult', '6-ratios'],
+  '7-distributive':   ['6-eval-expr', '3-mult-tables'],
+  '7-combine-terms':  ['6-eval-expr'],
+  '7-tax-tip':        ['6-percent-of', '7-percent-change'],
+  '7-volume-prism':   ['6-surface-area', '5-volume'],
+
+  // ----- GRADE 8 -----
+  '8-pythagorean':         ['5-exponents', '3-area-rect', '8-square-roots'],
+  '8-square-roots':        ['5-exponents'],
+  '8-exponent-laws':       ['5-exponents'],
+  '8-scientific-notation': ['8-exponent-laws', '5-powers-10'],
+  '8-slope-from-points':   ['6-int-sub', '6-coord-quadrant', '7-int-div'],
+  '8-function-eval':       ['6-eval-expr', '7-two-step-eq'],
+  '8-system-substitution': ['7-two-step-eq', '8-function-eval'],
+  '8-cube-root':           ['8-square-roots'],
+  '8-linear-from-table':   ['8-slope-from-points'],
+  '8-translate-point':     ['6-coord-quadrant'],
+
+  // ----- ALGEBRA 1 -----
+  'alg1-solve-linear':       ['7-two-step-eq'],
+  'alg1-slope-intercept':    ['8-slope-from-points', '8-function-eval'],
+  'alg1-foil':               ['8-exponent-laws', '7-distributive'],
+  'alg1-factor-trinomial':   ['alg1-foil'],
+  'alg1-quadratic-formula':  ['alg1-factor-trinomial', '8-square-roots'],
+  'alg1-inequality':         ['6-inequality-solve', 'alg1-solve-linear'],
+  'alg1-linear-inequality':  ['6-inequality-solve', 'alg1-solve-linear'],
+  'alg1-elimination':        ['8-system-substitution'],
+  'alg1-poly-add':           ['7-combine-terms', '8-exponent-laws'],
+  'alg1-abs-eq':             ['alg1-solve-linear', '6-int-sub'],
+  'alg1-rate-change':        ['8-slope-from-points'],
+
+  // ----- GEOMETRY -----
+  'geo-angle-sum-triangle': ['k-shapes', '6-eval-expr'],
+  'geo-supplementary':      ['geo-angle-sum-triangle'],
+  'geo-area-triangle':      ['3-area-rect', '5-mult-fractions'],
+  'geo-similar-triangles':  ['7-proportions', '3-area-rect'],
+  'geo-volume-cylinder':    ['7-circle-area', '5-volume'],
+  'geo-distance-formula':   ['8-pythagorean'],
+  'geo-triangle-congruence':['geo-angle-sum-triangle'],
+  'geo-special-right':      ['8-pythagorean', '8-square-roots'],
+  'geo-trig-find-side':     ['geo-special-right'],
+
+  // ----- ALGEBRA 2 -----
+  'alg2-function-composition': ['8-function-eval'],
+  'alg2-log-eval':             ['8-exponent-laws'],
+  'alg2-exp-growth':           ['8-exponent-laws', 'alg2-function-composition'],
+  'alg2-complete-square':      ['alg1-factor-trinomial', 'alg1-quadratic-formula'],
+  'alg2-rational-eval':        ['alg1-factor-trinomial', '5-mult-fractions'],
+  'alg2-inverse-function':     ['8-function-eval', 'alg1-solve-linear'],
+  'alg2-factor-theorem':       ['alg1-factor-trinomial', '8-function-eval'],
+  'alg2-quadratic-complex':    ['alg1-quadratic-formula', '8-square-roots'],
+
+  // ----- PRE-CALCULUS -----
+  'pc-unit-circle':    ['geo-special-right', '5-mult-fractions'],
+  'pc-trig-ratios':    ['geo-special-right', '8-pythagorean'],
+  'pc-arith-sequence': ['6-eval-expr', 'alg1-slope-intercept'],
+  'pc-geom-sequence':  ['5-exponents', 'pc-arith-sequence'],
+  'pc-log-props':      ['alg2-log-eval', '8-exponent-laws'],
+  'pc-pyth-identity':  ['pc-unit-circle', '5-exponents'],
+  'pc-limits-basic':   ['8-function-eval', '5-exponents'],
+  'pc-polar-to-rect':  ['pc-trig-ratios', 'pc-unit-circle']
+};
+
+// Walk the prerequisite DAG to find the DEEPEST unmastered ancestor of
+// `skillId`. The "real gap" — the foundation the student is missing
+// underneath what they're currently failing.
+function MATH_findGapPrereq(skillId, progress, visited) {
+  visited = visited || new Set();
+  if (visited.has(skillId)) return null;
+  visited.add(skillId);
+  const prereqs = MATH_PREREQS[skillId] || [];
+  for (const p of prereqs) {
+    const st = progress && progress[p];
+    if (st && st.mastered) continue;
+    // Recurse first so we surface the most foundational gap.
+    const deeper = MATH_findGapPrereq(p, progress, visited);
+    if (deeper) return deeper;
+    return p;
+  }
+  return null;
+}
+
 // Order matters for grade progression.
 const GRADE_ORDER = ['K', '1', '2', '3', '4', '5', '6', '7', '8', 'Algebra 1', 'Geometry', 'Algebra 2', 'Pre-Calculus'];
 

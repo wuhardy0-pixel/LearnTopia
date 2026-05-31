@@ -1968,30 +1968,32 @@ socket.on('gameState', (data) => {
   if (gameState.stations && gameMap) {
     gameMap.stations = gameState.stations;
   }
-  // Reconcile ball state with the server. Velocity blend is asymmetric
-  // (see blendBallAxis) so a fresh local kick doesn't get snapped to a
-  // stop before the server has processed it. Position snaps only when
-  // we've taken the server's velocity verbatim — otherwise we'd yank
-  // the ball backward to the server's lagged position every 33 ms while
-  // its local-impulse velocity is still rolling.
+  // Reconcile ball with the server. Position ALWAYS lerps smoothly
+  // toward the authoritative value — no hard snap, ever — so motion
+  // looks continuous between server updates instead of jittering every
+  // 33 ms. Velocity uses an asymmetric blend (see blendBallAxis) so a
+  // fresh local kick doesn't get clobbered by a still-lagged server vx.
+  // Score / respawn transitions teleport because we WANT a hard reset
+  // when the ball goes from "in play" to "scored" or back.
   if (data.ball) {
     if (!predictedBall) {
       predictedBall = { x: data.ball.x, y: data.ball.y, vx: data.ball.vx, vy: data.ball.vy, radius: data.ball.radius, scored: data.ball.scored, lastTime: performance.now(), wasTouching: false };
     } else {
-      const newVx = blendBallAxis(predictedBall.vx, data.ball.vx);
-      const newVy = blendBallAxis(predictedBall.vy, data.ball.vy);
-      const tookServerVel = newVx === data.ball.vx && newVy === data.ball.vy;
-      if (tookServerVel) {
+      // Hard-reset position on the scored↔playing transition (the ball
+      // really has teleported to / from center).
+      const scoredFlipped = data.ball.scored !== predictedBall.scored;
+      if (scoredFlipped) {
         predictedBall.x = data.ball.x;
         predictedBall.y = data.ball.y;
       } else {
-        // Server hasn't caught up — tug position toward server very gently
-        // so we self-correct any small drift without yanking visibly.
-        predictedBall.x += (data.ball.x - predictedBall.x) * 0.05;
-        predictedBall.y += (data.ball.y - predictedBall.y) * 0.05;
+        // Continuous lerp toward server position. 0.25/tick at 30 Hz
+        // converges ~95 % in 11 ticks (~360 ms) so any drift from
+        // network jitter is smoothed out without visible snaps.
+        predictedBall.x += (data.ball.x - predictedBall.x) * 0.25;
+        predictedBall.y += (data.ball.y - predictedBall.y) * 0.25;
       }
-      predictedBall.vx = newVx;
-      predictedBall.vy = newVy;
+      predictedBall.vx = blendBallAxis(predictedBall.vx, data.ball.vx);
+      predictedBall.vy = blendBallAxis(predictedBall.vy, data.ball.vy);
       predictedBall.radius = data.ball.radius;
       predictedBall.scored = data.ball.scored;
     }

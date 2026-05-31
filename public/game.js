@@ -496,7 +496,9 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-canvas.addEventListener('mousedown', (e) => {
+// Pointerdown handles both mouse and touch — tapping the canvas in a
+// shooting mode fires at the tapped world position.
+canvas.addEventListener('pointerdown', (e) => {
   if (views.gameView.classList.contains('hidden') || !myRole) return;
   if (gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball') {
     const me = gameState.players[socket.id];
@@ -530,6 +532,147 @@ function updateInput() {
   if (keys.d) dx += 1;
   socket.emit('input', { dx, dy, jump: keys.w });
 }
+
+// =========================================================
+// Touch controls (mobile)
+// =========================================================
+const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if (IS_TOUCH) document.body.classList.add('touch-device');
+
+// Show/hide the touch control overlay when entering/leaving the game view.
+const _origShowView = showView;
+showView = function(viewName) {
+  _origShowView(viewName);
+  const tc = document.getElementById('touch-controls');
+  if (!tc) return;
+  if (IS_TOUCH && viewName === 'gameView') tc.classList.remove('hidden');
+  else tc.classList.add('hidden');
+};
+
+// ----- Virtual joystick -----
+(function setupJoystick() {
+  const joy = document.getElementById('touch-joystick');
+  const knob = document.getElementById('touch-joystick-knob');
+  if (!joy || !knob) return;
+
+  let activePointerId = null;
+  let centerX = 0, centerY = 0;
+  const RADIUS = 55;       // knob travel range (px)
+  const DEADZONE = 14;     // pixels from center before keys register
+
+  function setKeysFromVector(dx, dy) {
+    const oldW = keys.w, oldA = keys.a, oldS = keys.s, oldD = keys.d;
+    const mag = Math.hypot(dx, dy);
+    if (mag < DEADZONE) {
+      keys.w = keys.a = keys.s = keys.d = false;
+    } else {
+      // Threshold per axis — let players go in a single direction too.
+      const axisThresh = DEADZONE;
+      keys.w = dy < -axisThresh;
+      keys.s = dy >  axisThresh;
+      keys.a = dx < -axisThresh;
+      keys.d = dx >  axisThresh;
+    }
+    if (keys.w !== oldW || keys.a !== oldA || keys.s !== oldS || keys.d !== oldD) {
+      updateInput();
+    }
+  }
+
+  function start(e) {
+    if (activePointerId !== null) return;
+    activePointerId = e.pointerId;
+    joy.setPointerCapture(e.pointerId);
+    const r = joy.getBoundingClientRect();
+    centerX = r.left + r.width / 2;
+    centerY = r.top + r.height / 2;
+    move(e);
+    e.preventDefault();
+  }
+  function move(e) {
+    if (e.pointerId !== activePointerId) return;
+    let dx = e.clientX - centerX;
+    let dy = e.clientY - centerY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > RADIUS) { dx = dx / dist * RADIUS; dy = dy / dist * RADIUS; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    setKeysFromVector(dx, dy);
+    e.preventDefault();
+  }
+  function end(e) {
+    if (e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    knob.style.transform = '';
+    setKeysFromVector(0, 0);
+  }
+  joy.addEventListener('pointerdown', start);
+  joy.addEventListener('pointermove', move);
+  joy.addEventListener('pointerup', end);
+  joy.addEventListener('pointercancel', end);
+})();
+
+// ----- Touch action buttons -----
+function _touchShoot() {
+  if (!(gameMode === 'onewayout' || gameMode === 'coredefender' || gameMode === 'blastball')) return;
+  const me = gameState.players[socket.id];
+  if (!me) return;
+  // Aim in the direction the joystick is pushed; fall back to "right" if idle.
+  let dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+  let dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  if (dx === 0 && dy === 0) dx = 1;
+  const mag = Math.hypot(dx, dy) || 1;
+  const tx = me.x + (dx / mag) * 600;
+  const ty = me.y + (dy / mag) * 600;
+  socket.emit('interact', { type: 'shoot', tx, ty });
+}
+
+function _touchAction() {
+  // Mirror the E-key handler: mode-dependent interaction with nearby
+  // station / gate / question terminal.
+  const me = gameState.players[socket.id];
+  if (!me) return;
+  if (gameMode === 'fishtopia') {
+    if (Math.hypot(me.x - STATIONS.question.x,    me.y - STATIONS.question.y)    < STATIONS.question.radius)    showQuestionModal();
+    else if (Math.hypot(me.x - STATIONS.sell.x,   me.y - STATIONS.sell.y)        < STATIONS.sell.radius)        socket.emit('interact', { type: 'sell' });
+    else if (Math.hypot(me.x - STATIONS.shop.x,   me.y - STATIONS.shop.y)        < STATIONS.shop.radius)        document.getElementById('shop-modal').classList.remove('hidden');
+    else if (Math.hypot(me.x - STATIONS.ticketBooth.x, me.y - STATIONS.ticketBooth.y) < STATIONS.ticketBooth.radius) document.getElementById('cosmetic-shop-modal').classList.remove('hidden');
+  } else if (gameMode === 'dontlookdown') {
+    const near = gameStations.find(s => Math.hypot(me.x - s.x, me.y - s.y) < s.radius);
+    if (near) showQuestionModal();
+  } else if (gameMode === 'blastball') {
+    showQuestionModal();
+  } else if (gameMode === 'onewayout' || gameMode === 'coredefender') {
+    if (!gameMap) return;
+    const nearGate = gameMap.gates ? gameMap.gates.find(g => {
+      if (g.isOpen) return false;
+      const cx = Math.max(g.x, Math.min(me.x, g.x + g.w));
+      const cy = Math.max(g.y, Math.min(me.y, g.y + g.h));
+      return Math.hypot(me.x - cx, me.y - cy) < 150;
+    }) : null;
+    const nearStation = gameMap.stations.find(s => Math.hypot(me.x - s.x, me.y - s.y) < s.radius);
+    if (nearGate) socket.emit('interact', { type: 'unlock', gateId: nearGate.id });
+    else if (nearStation) {
+      if (nearStation.type === 'vendor' || nearStation.type === 'turret') socket.emit('interact', { type: 'buy', stationId: nearStation.id });
+      else showQuestionModal();
+    } else if (gameMode === 'coredefender') socket.emit('interact', { type: 'build_turret' });
+  }
+}
+
+function _touchJumpOrBlast() {
+  if (gameMode === 'dontlookdown') socket.emit('doJump');
+  else if (gameMode === 'blastball') socket.emit('interact', { type: 'superBlast' });
+  else if (gameMode === 'fishtopia') socket.emit('interact', { type: 'fish' });
+  // Other modes: no-op (no space binding)
+}
+
+(function setupTouchButtons() {
+  const shoot  = document.getElementById('touch-btn-shoot');
+  const action = document.getElementById('touch-btn-action');
+  const jump   = document.getElementById('touch-btn-jump');
+  // Use pointerdown for snappier feel than click on touch devices.
+  if (shoot)  shoot .addEventListener('pointerdown', e => { e.preventDefault(); _touchShoot(); });
+  if (action) action.addEventListener('pointerdown', e => { e.preventDefault(); _touchAction(); });
+  if (jump)   jump  .addEventListener('pointerdown', e => { e.preventDefault(); _touchJumpOrBlast(); });
+})();
 
 socket.on('gateUnlocked', (gateId) => {
   if (gameMap && gameMap.gates) {

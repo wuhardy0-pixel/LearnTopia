@@ -176,3 +176,42 @@ canvas { width: 100%; height: 100%; display: block; }
   box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
 .toast.show { top: 20px; opacity: 1; }
+
+/* ===== Touch controls (mobile) ===== */
+.touch-btn {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.85);
+  color: white;
+  font-size: 1.6rem;
+  font-weight: bold;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.touch-btn:active { transform: scale(0.93); }
+
+body.touch-device #touch-controls:not(.hidden) { display: block !important; }
+body:not(.touch-device) #touch-controls { display: none !important; }
+
+/* On touch devices, lift the Answer Questions button above the joystick. */
+body.touch-device #btn-answer-questions {
+  left: auto;
+  right: 30px;
+  top: 80px;
+  bottom: auto;
+  font-size: 0.95rem;
+  padding: 10px 18px;
+}
+
+/* Avoid double-tap-zoom + accidental scroll on the canvas */
+#game-canvas { touch-action: none; }

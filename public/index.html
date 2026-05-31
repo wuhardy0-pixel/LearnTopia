@@ -233,8 +233,8 @@
       </div>
     </div>
 
-    <!-- Floating "Answer Questions" pill — sized to match the HUD pills (energy/timer). -->
-    <button id="btn-answer-questions" class="btn hidden" style="position: absolute; bottom: 30px; left: 30px; background:#f8fafc; color:#0f172a; font-size:1.1rem; font-weight:bold; padding:10px 20px; border-radius:12px; border:none; box-shadow:0 4px 10px rgba(0,0,0,0.15); z-index:100; cursor:pointer;">📝 Answer</button>
+    <!-- Floating "Answer Questions" pill — sized to match the HUD pills (energy/timer). Styling in .answer-pill so the touch-vs-desktop position swap can actually take effect. -->
+    <button id="btn-answer-questions" class="answer-pill hidden">📝 Answer</button>
 
     <!-- Touch controls (mobile only, toggled by body.touch-device) -->
     <div id="touch-controls" class="hidden" style="position:absolute; inset:0; pointer-events:none; z-index:90;">

@@ -203,14 +203,35 @@ canvas { width: 100%; height: 100%; display: block; }
 body.touch-device #touch-controls:not(.hidden) { display: block !important; }
 body:not(.touch-device) #touch-controls { display: none !important; }
 
-/* On touch devices, the joystick sits at bottom-left (30 px from edge,
-   150 px tall). Park the Answer pill just above it so they share the
-   same column and don't fight the right-side HUD. */
-body.touch-device #btn-answer-questions {
+/* "Answer Questions" pill — same visual chip as the HUD pills
+   (energy/timer): white background, dark text, 12 px radius. Lives in
+   its own class so the touch-vs-desktop position rules below can
+   actually take effect (inline-styled positions can't be overridden). */
+.answer-pill {
+  position: absolute;
+  bottom: 30px;
   left: 30px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 1.1rem;
+  font-weight: bold;
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* On touch devices, joystick sits at bottom-left (30 px from edges,
+   150 px tall, so its top is at bottom: 180 px). Park the Answer
+   pill just above it. */
+body.touch-device .answer-pill {
   bottom: 200px;
-  top: auto;
-  right: auto;
+  left: 30px;
 }
 
 /* Avoid double-tap-zoom + accidental scroll on the canvas */

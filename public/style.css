@@ -203,13 +203,14 @@ canvas { width: 100%; height: 100%; display: block; }
 body.touch-device #touch-controls:not(.hidden) { display: block !important; }
 body:not(.touch-device) #touch-controls { display: none !important; }
 
-/* On touch devices, lift the (small) Answer Questions pill clear of
-   the joystick into the upper-right so it doesn't fight the HUD. */
+/* On touch devices, the joystick sits at bottom-left (30 px from edge,
+   150 px tall). Park the Answer pill just above it so they share the
+   same column and don't fight the right-side HUD. */
 body.touch-device #btn-answer-questions {
-  left: auto;
-  right: 20px;
-  top: 80px;
-  bottom: auto;
+  left: 30px;
+  bottom: 200px;
+  top: auto;
+  right: auto;
 }
 
 /* Avoid double-tap-zoom + accidental scroll on the canvas */

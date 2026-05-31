@@ -28,6 +28,12 @@ const views = {
 function showView(viewName) {
   Object.values(views).forEach(v => v.classList.add('hidden'));
   if (views[viewName]) views[viewName].classList.remove('hidden');
+  // Touch overlay shadows the game-view visibility on touch devices.
+  const tc = document.getElementById('touch-controls');
+  if (tc) {
+    if (document.body.classList.contains('touch-device') && viewName === 'gameView') tc.classList.remove('hidden');
+    else tc.classList.add('hidden');
+  }
 }
 
 // --- AUTH LOGIC ---
@@ -536,18 +542,23 @@ function updateInput() {
 // =========================================================
 // Touch controls (mobile)
 // =========================================================
-const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+// IS_TOUCH only marks the body so CSS can show the overlay and so
+// showView() (above) can toggle .hidden on #touch-controls when the
+// player enters / leaves the game view. The whole detection has to
+// happen at script load time — defer-loaded so document.body exists.
+// Belt-and-suspenders detection: ontouchstart and maxTouchPoints miss
+// some devices (iPad on recent iPadOS reports as desktop), so we also
+// check the coarse-pointer media query.
+const IS_TOUCH = ('ontouchstart' in window)
+              || (navigator.maxTouchPoints > 0)
+              || (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches);
 if (IS_TOUCH) document.body.classList.add('touch-device');
-
-// Show/hide the touch control overlay when entering/leaving the game view.
-const _origShowView = showView;
-showView = function(viewName) {
-  _origShowView(viewName);
-  const tc = document.getElementById('touch-controls');
-  if (!tc) return;
-  if (IS_TOUCH && viewName === 'gameView') tc.classList.remove('hidden');
-  else tc.classList.add('hidden');
-};
+// If we boot already inside the game view (e.g. hot reload after a
+// match), reveal the overlay immediately.
+if (IS_TOUCH && !views.gameView.classList.contains('hidden')) {
+  const tcBoot = document.getElementById('touch-controls');
+  if (tcBoot) tcBoot.classList.remove('hidden');
+}
 
 // ----- Virtual joystick -----
 (function setupJoystick() {

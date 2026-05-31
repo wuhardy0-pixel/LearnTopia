@@ -371,13 +371,37 @@ document.getElementById('btn-end-game').addEventListener('click', () => {
   if (myRole === 'host') socket.emit('endGame');
 });
 
-socket.on('gameEnded', ({ leaderboard }) => {
+socket.on('gameEnded', ({ leaderboard, winningTeam, scores }) => {
   const list = document.getElementById('results-leaderboard');
   list.innerHTML = '';
+
+  // Headline for blastball: show team scores + which team won.
+  if (winningTeam && scores) {
+    const header = document.createElement('li');
+    const k = scores.kitcolona || 0, g = scores.gimadrid || 0;
+    const winLabel = winningTeam === 'kitcolona' ? '🔴 Kitcolona wins!' : '🔵 Gimadrid wins!';
+    header.innerHTML = `<div style="font-size:1.3rem; font-weight:bold; padding:8px 0;">${winLabel} <span style="color:#94a3b8; font-weight:normal; font-size:1rem;">(${k} – ${g})</span></div><div style="font-size:0.9rem; color:#fbbf24;">+200 🪙 bonus for every player on the winning team</div>`;
+    header.style.listStyle = 'none';
+    header.style.marginBottom = '12px';
+    list.appendChild(header);
+  } else if (scores) {
+    // Blastball tie
+    const header = document.createElement('li');
+    header.innerHTML = `<div style="font-size:1.3rem; font-weight:bold; padding:8px 0;">⚖️ Tied! (${scores.kitcolona} – ${scores.gimadrid})</div>`;
+    header.style.listStyle = 'none';
+    list.appendChild(header);
+  }
+
   leaderboard.forEach((p, i) => {
     const li = document.createElement('li');
     let coinHtml = p.coinsEarned ? ` <span style="color:#fbbf24;">(+${p.coinsEarned} 🪙)</span>` : '';
-    li.innerHTML = `<strong>#${i + 1}</strong> ${p.name} - ${p.score} <strong>${p.scoreLabel}</strong>${coinHtml}`;
+    let teamHtml = '';
+    if (p.team) {
+      const c = p.team === 'kitcolona' ? '#ef4444' : '#3b82f6';
+      const name = p.team === 'kitcolona' ? 'Kitcolona' : 'Gimadrid';
+      teamHtml = ` <span style="color:${c}; font-weight:bold;">[${name}]</span>`;
+    }
+    li.innerHTML = `<strong>#${i + 1}</strong> ${p.name}${teamHtml} - ${p.score} <strong>${p.scoreLabel}</strong>${coinHtml}`;
     list.appendChild(li);
 
     if (p.name === myUsername && p.coinsEarned && localUserConfig) {
@@ -1279,8 +1303,17 @@ function render() {
       if (p.hp <= 0 && gameMode === 'coredefender') ctx.globalAlpha = 0.3;
       ctx.beginPath(); ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
       ctx.fillStyle = p.skin || '#ffffff'; ctx.fill();
-      // Render energy visual (stroke border)
-      ctx.strokeStyle = p.energy <= 0 ? '#ef4444' : '#1e293b'; ctx.lineWidth = 4; ctx.stroke();
+      // Border: in blastball use a thick team-colored ring so you can
+      // tell teammates from opponents at a glance. Other modes use the
+      // existing energy-state border.
+      if (gameMode === 'blastball' && p.team) {
+        ctx.strokeStyle = p.team === 'kitcolona' ? '#ef4444' : '#3b82f6';
+        ctx.lineWidth = 7;
+      } else {
+        ctx.strokeStyle = p.energy <= 0 ? '#ef4444' : '#1e293b';
+        ctx.lineWidth = 4;
+      }
+      ctx.stroke();
 
       // Name
       if (gameMode === 'onewayout') {
@@ -1300,6 +1333,23 @@ function render() {
       }
       ctx.fillStyle = '#fff'; ctx.font = '600 16px Outfit'; ctx.textAlign = 'center';
       ctx.fillText(p.hp <= 0 && gameMode === 'coredefender' ? 'DEAD' : p.name, p.x, p.y - (!p.hp ? 35 : 75));
+
+      // Blastball: team chip above the name so you can spot who's on
+      // your side from across the pitch.
+      if (gameMode === 'blastball' && p.team) {
+        const teamColor = p.team === 'kitcolona' ? '#ef4444' : '#3b82f6';
+        const label = p.team === 'kitcolona' ? 'KITCOLONA' : 'GIMADRID';
+        const w = ctx.measureText(label).width + 14;
+        ctx.font = 'bold 12px Outfit';
+        const w2 = ctx.measureText(label).width + 14;
+        const bx = p.x - w2 / 2, by = p.y - 100;
+        ctx.fillStyle = teamColor;
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(bx, by, w2, 18, 6) : ctx.rect(bx, by, w2, 18);
+        ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, p.x, by + 13);
+      }
       ctx.globalAlpha = 1.0;
 
       // Draw energy HUD over player head if DLD

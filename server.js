@@ -670,7 +670,7 @@ function endGameProcedure(code, game) {
     }).sort((a,b) => b.score - a.score);
   } else if (game.mode === 'blastball') {
     leaderboard = Object.values(game.players).map(p => {
-      return { name: p.name, score: p.goals || 0, scoreLabel: '⚽ Goals' };
+      return { name: p.name, team: p.team || null, score: p.goals || 0, scoreLabel: '⚽ Goals' };
     }).sort((a,b) => b.score - a.score);
   } else {
     leaderboard = Object.values(game.players).map(p => {
@@ -689,7 +689,26 @@ function endGameProcedure(code, game) {
     }
   });
 
-  io.to(code).emit('gameEnded', { leaderboard });
+  // Blastball: bonus 200 coins to every member of the winning team.
+  // Ties give nobody the bonus.
+  let winningTeam = null;
+  let finalScores = null;
+  if (game.mode === 'blastball' && game.scores) {
+    if (game.scores.kitcolona > game.scores.gimadrid) winningTeam = 'kitcolona';
+    else if (game.scores.gimadrid > game.scores.kitcolona) winningTeam = 'gimadrid';
+    if (winningTeam) {
+      Object.values(game.players).forEach(p => {
+        if (p.team !== winningTeam) return;
+        const u = users[p.name];
+        if (u) u.inventory.coins += 200;
+        const entry = leaderboard.find(e => e.name === p.name);
+        if (entry) entry.coinsEarned = (entry.coinsEarned || 0) + 200;
+      });
+    }
+    finalScores = { kitcolona: game.scores.kitcolona, gimadrid: game.scores.gimadrid };
+  }
+
+  io.to(code).emit('gameEnded', { leaderboard, winningTeam, scores: finalScores });
   delete games[code];
 }
 
@@ -1170,7 +1189,8 @@ setInterval(() => {
           id: p.id, x: p.x, y: p.y,
           name: p.name, skin: user.cosmetics.activeSkin, trail: user.cosmetics.activeTrail,
           energy: Math.floor(p.energy || 0), elevation: Math.max(0, Math.floor(-(p.y||0) / 10)),
-          hp: p.hp !== undefined ? p.hp : 100, cards: p.cards || []
+          hp: p.hp !== undefined ? p.hp : 100, cards: p.cards || [],
+          team: p.team || null
         };
       });
 

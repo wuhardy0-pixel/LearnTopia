@@ -401,7 +401,10 @@ socket.on('gameEnded', ({ leaderboard, winningTeam, scores }) => {
       const name = p.team === 'kitcolona' ? 'Kitcolona' : 'Gimadrid';
       teamHtml = ` <span style="color:${c}; font-weight:bold;">[${name}]</span>`;
     }
-    li.innerHTML = `<strong>#${i + 1}</strong> ${p.name}${teamHtml} - ${p.score} <strong>${p.scoreLabel}</strong>${coinHtml}`;
+    const escapeBadge = (p.escaped === true)
+      ? ` <span style="color:#22c55e; font-weight:bold;">🚀 ESCAPED</span>`
+      : (p.escaped === false ? ` <span style="color:#94a3b8;">💀 missed the pod</span>` : '');
+    li.innerHTML = `<strong>#${i + 1}</strong> ${p.name}${teamHtml}${escapeBadge} - ${p.score} <strong>${p.scoreLabel}</strong>${coinHtml}`;
     list.appendChild(li);
 
     if (p.name === myUsername && p.coinsEarned && localUserConfig) {

@@ -697,6 +697,19 @@ function endGameProcedure(code, game) {
     }
   });
 
+  // One Way Out: every player who actually made it into the escape
+  // pod gets a +200 escape bonus on top of placement rewards.
+  if (game.mode === 'onewayout' && Array.isArray(game.escapedPlayers)) {
+    const escapedNames = new Set(game.escapedPlayers.map(e => e.name));
+    leaderboard.forEach(entry => { entry.escaped = escapedNames.has(entry.name); });
+    for (const e of game.escapedPlayers) {
+      const u = users[e.name];
+      if (u) u.inventory.coins += 200;
+      const entry = leaderboard.find(le => le.name === e.name);
+      if (entry) entry.coinsEarned = (entry.coinsEarned || 0) + 200;
+    }
+  }
+
   // Blastball: bonus 200 coins to every member of the winning team.
   // Ties give nobody the bonus.
   let winningTeam = null;
@@ -1029,13 +1042,24 @@ setInterval(() => {
           
           p.x = newX; p.y = newY;
 
-          // Check Victory Condition
+          // Check Victory Condition. Two things happen here every tick
+          // a player is inside the pod's radius:
+          //   1. First time anyone enters, the 30 s countdown starts.
+          //   2. While the countdown is running, mark the player as
+          //      boarded. We track this across every tick rather than
+          //      only at launch — that way a player who stood in the
+          //      pod the entire time but happened to be a pixel
+          //      outside the radius at the exact launch tick (due to
+          //      a stutter or input jitter) still counts as escaped.
           if (Math.hypot(p.x - game.map.escapePod.x, p.y - game.map.escapePod.y) < game.map.escapePod.radius) {
             if (!game.map.escapePod.triggered) {
                game.map.escapePod.triggered = true;
                game.map.escapePod.launchTime = Date.now() + 30000;
                let codeStr = sMap.code;
                io.to(codeStr).emit('toast', { html: `<span style="color: #ef4444; font-size: 1.5rem; font-weight: bold;">T-MINUS 30s!</span><br/>${p.name} activated the pod! Survive!`, customColor: '#0f172a' });
+            }
+            if (game.map.escapePod.triggered && !game.map.escapePod.launched) {
+              p.boardedPod = true;
             }
           }
           
@@ -1206,13 +1230,21 @@ setInterval(() => {
          if (game.map.escapePod && game.map.escapePod.triggered && !game.map.escapePod.launched) {
             if (Date.now() >= game.map.escapePod.launchTime) {
                game.map.escapePod.launched = true;
+               // Anyone who was inside the pod at ANY tick during the
+               // countdown is safe (see boardedPod tracking above).
+               // Then sweep one more time for current occupants in
+               // case someone slipped in on the very last frame.
                let safePlayers = [];
                for (let pId in game.players) {
                  let pl = game.players[pId];
-                 if (Math.hypot(pl.x - game.map.escapePod.x, pl.y - game.map.escapePod.y) <= game.map.escapePod.radius) {
+                 const insideNow = Math.hypot(pl.x - game.map.escapePod.x, pl.y - game.map.escapePod.y) <= game.map.escapePod.radius;
+                 if (pl.boardedPod || insideNow) {
                     safePlayers.push({ name: pl.name, id: pId });
                  }
                }
+               // Stash on the game so endGameProcedure can pay the
+               // escape bonus and annotate the leaderboard.
+               game.escapedPlayers = safePlayers;
                io.to(code).emit('escapeCutscene', { safePlayers });
                setTimeout(() => {
                   if (games[code] && games[code].state === 'playing') {

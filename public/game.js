@@ -457,10 +457,29 @@ let keys = { w: false, a: false, s: false, d: false };
 function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 window.addEventListener('resize', resizeCanvas); resizeCanvas();
 
+// When the game is on screen, blur any button you click so it
+// doesn't sit on focus and swallow subsequent space-presses or block
+// the keyboard handler above. Modal option buttons keep focus because
+// keyboard-driven answering is useful there.
+document.addEventListener('click', (e) => {
+  if (views.gameView.classList.contains('hidden')) return;
+  const t = e.target;
+  if (!(t instanceof HTMLElement)) return;
+  if (t.tagName !== 'BUTTON') return;
+  if (t.closest('.modal-overlay')) return;
+  t.blur();
+});
+
 window.addEventListener('keydown', (e) => {
   if (views.gameView.classList.contains('hidden')) return;
   if (!myRole) return;
-  if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'BUTTON') return;
+  // Only INPUT elements (text fields) get to swallow movement keys.
+  // BUTTONs used to be in this filter too, which silently ate every
+  // WASD press after the player tapped any HUD button — input never
+  // reached the server and prediction would then snap the character
+  // back to spawn once drift grew. Combined with the global click
+  // → blur listener below, buttons no longer hold focus after activation.
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
 
   const key = e.key.toLowerCase();
 
@@ -733,9 +752,15 @@ function _touchJumpOrBlast() {
   const action = document.getElementById('touch-btn-action');
   const jump   = document.getElementById('touch-btn-jump');
   // Use pointerdown for snappier feel than click on touch devices.
-  if (shoot)  shoot .addEventListener('pointerdown', e => { e.preventDefault(); _touchShoot(); });
-  if (action) action.addEventListener('pointerdown', e => { e.preventDefault(); _touchAction(); });
-  if (jump)   jump  .addEventListener('pointerdown', e => { e.preventDefault(); _touchJumpOrBlast(); });
+  // Blur after firing so the button doesn't keep focus and intercept
+  // subsequent keystrokes (e.g. WASD from a co-op partner on the same
+  // device, or a hybrid keyboard+touch laptop).
+  const wire = (btn, fn) => btn && btn.addEventListener('pointerdown', e => {
+    e.preventDefault(); fn(); btn.blur();
+  });
+  wire(shoot,  _touchShoot);
+  wire(action, _touchAction);
+  wire(jump,   _touchJumpOrBlast);
 })();
 
 socket.on('gateUnlocked', (gateId) => {
@@ -887,18 +912,29 @@ function tickPrediction(now, serverMe) {
   // running past where the server allows.
   clampPredictedToWorld(serverMe);
 
-  // After clamping, drift should be small in steady state. Only
-  // reconcile when truly out of sync (lag spike, missed packet) or
-  // when the player is idle.
+  // After clamping, drift should be small in steady state. Avoid hard
+  // snaps even on big drift — players reported "teleport back to
+  // spawn" when input briefly stopped reaching the server. We instead
+  // catch up via a fast lerp (50 %/frame) which closes a 500-px gap
+  // in ~10 frames without a visible warp. Idle players use a gentler
+  // lerp so the character settles smoothly when input lifts.
   const driftX = serverMe.x - predicted.x;
   const driftY = serverMe.y - predicted.y;
   const drift = Math.hypot(driftX, driftY);
-  if (drift > 200) {
-    predicted.x = serverMe.x;
-    predicted.y = serverMe.y;
+  if (drift > 600) {
+    // Past 600 px the player is effectively in the wrong place; a
+    // quick lerp still feels better than a teleport.
+    predicted.x += driftX * 0.5;
+    predicted.y += driftY * 0.5;
   } else if (!hasInput) {
     predicted.x += driftX * 0.2;
     predicted.y += driftY * 0.2;
+  } else if (drift > 80) {
+    // While input is active, only the big-drift gentle pull-back to
+    // keep us aligned with the server without overruling the player's
+    // intent visibly.
+    predicted.x += driftX * 0.05;
+    predicted.y += driftY * 0.05;
   }
   return predicted;
 }

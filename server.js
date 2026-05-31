@@ -596,8 +596,16 @@ io.on('connection', (socket) => {
       } else if (category === 'trail' && !user.cosmetics.unlockedTrails.includes(value)) {
         user.inventory.coins -= price; user.cosmetics.unlockedTrails.push(value);
       } else if (category === 'pack') {
-        const AVAILABLE_SKINS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#14b8a6', '#f43f5e', '#000000', '#ec4899', '#64748b'];
-        const AVAILABLE_TRAILS = ['fire', 'ice', 'plasma', 'shadow', 'gold'];
+        // Plain hex codes remain in the pool for variety, but the
+        // showpiece rewards are the gradient + pattern preset IDs the
+        // client knows how to render in SKIN_PRESETS / TRAIL_PRESETS.
+        const AVAILABLE_SKINS = [
+          '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6',
+          '#8b5cf6', '#d946ef', '#14b8a6', '#f43f5e', '#000000', '#ec4899', '#64748b',
+          'sunset', 'ocean', 'galaxy', 'lava', 'aurora', 'mint', 'rose-gold',
+          'checker', 'stripes', 'polka'
+        ];
+        const AVAILABLE_TRAILS = ['fire', 'ice', 'plasma', 'shadow', 'gold', 'rainbow', 'flame', 'comet'];
         
         const lockedSkins = AVAILABLE_SKINS.filter(s => !user.cosmetics.unlockedSkins.includes(s));
         const lockedTrails = AVAILABLE_TRAILS.filter(t => !user.cosmetics.unlockedTrails.includes(t));

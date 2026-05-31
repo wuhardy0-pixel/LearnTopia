@@ -182,10 +182,10 @@ socket.on('unboxing', ({ type, val }) => {
 
   if (type === 'skin') {
     title.innerHTML = `Legendary Skin!`;
-    display.innerHTML = `<div style="width:100px; height:100px; border-radius:50%; background:${val}; border:4px solid white; box-shadow: 0 0 20px ${val}"></div>`;
+    display.innerHTML = `<div style="width:100px; height:100px; border-radius:50%; background:${skinCss(val)}; border:4px solid white; box-shadow: 0 0 20px rgba(255,255,255,0.4);"></div>`;
   } else {
     title.innerHTML = `Epic Trail!`;
-    display.innerHTML = `<div class="trail-preview ${val}-trail" style="width:100px; height:100px; border-radius:12px; margin:auto;"></div>`;
+    display.innerHTML = `<div style="width:100px; height:100px; border-radius:12px; margin:auto; background:${trailCss(val)};"></div>`;
   }
 
   modal.classList.remove('hidden');
@@ -210,7 +210,7 @@ function renderProfileData() {
   localUserConfig.cosmetics.unlockedSkins.forEach(skin => {
     const div = document.createElement('div');
     div.className = 'shop-item';
-    div.innerHTML = `<div class="skin-preview" style="background:${skin};"></div><h4>Equip</h4>`;
+    div.innerHTML = `<div class="skin-preview" style="background:${skinCss(skin)};"></div><h4>Equip</h4>`;
     div.onclick = () => socket.emit('equipCosmetic', { itemType: 'skin', value: skin });
     skinGrid.appendChild(div);
   });
@@ -220,7 +220,7 @@ function renderProfileData() {
   localUserConfig.cosmetics.unlockedTrails.forEach(trail => {
     const div = document.createElement('div');
     div.className = 'shop-item';
-    let trailHtml = trail === 'none' ? `<div style="height:50px;width:50px;"></div>` : `<div class="trail-preview ${trail}-trail"></div>`;
+    let trailHtml = trail === 'none' ? `<div style="height:50px;width:50px;"></div>` : `<div class="trail-preview" style="background:${trailCss(trail)};"></div>`;
     div.innerHTML = `${trailHtml}<h4>Equip</h4>`;
     div.onclick = () => socket.emit('equipCosmetic', { itemType: 'trail', value: trail });
     trailGrid.appendChild(div);
@@ -969,6 +969,212 @@ function blendBallAxis(client, server) {
   return client * 0.9 + server * 0.1;                              // server lagging client's local kick
 }
 
+// =========================================================
+// Cosmetic skin + trail registry
+// =========================================================
+// Each preset carries a `css` string (used for HTML previews — works
+// with the CSS `background:` shorthand) and a `paint` function (used
+// for canvas rendering — sets ctx.fillStyle or strokes a trail).
+// Legacy plain-hex skin codes (e.g. '#ef4444') still work via the
+// fallback path so existing inventories aren't broken.
+const SKIN_PRESETS = {
+  // ---- Gradient blends ----
+  'sunset': {
+    name: '🌅 Sunset',
+    css: 'linear-gradient(135deg, #fbbf24 0%, #ef4444 60%, #b91c1c 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      g.addColorStop(0, '#fde68a'); g.addColorStop(0.5, '#f59e0b'); g.addColorStop(1, '#b91c1c');
+      ctx.fillStyle = g;
+    }
+  },
+  'ocean': {
+    name: '🌊 Ocean',
+    css: 'linear-gradient(135deg, #22d3ee 0%, #2563eb 70%, #1e3a8a 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      g.addColorStop(0, '#67e8f9'); g.addColorStop(0.5, '#2563eb'); g.addColorStop(1, '#1e3a8a');
+      ctx.fillStyle = g;
+    }
+  },
+  'galaxy': {
+    name: '🌌 Galaxy',
+    css: 'radial-gradient(circle at 30% 30%, #f0abfc 0%, #7c3aed 55%, #1e1b4b 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createRadialGradient(x - r/3, y - r/3, r/5, x, y, r);
+      g.addColorStop(0, '#f0abfc'); g.addColorStop(0.55, '#7c3aed'); g.addColorStop(1, '#1e1b4b');
+      ctx.fillStyle = g;
+    }
+  },
+  'lava': {
+    name: '🌋 Lava',
+    css: 'radial-gradient(circle, #fef3c7 0%, #f59e0b 50%, #b91c1c 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createRadialGradient(x, y, r / 5, x, y, r);
+      g.addColorStop(0, '#fef3c7'); g.addColorStop(0.5, '#f59e0b'); g.addColorStop(1, '#b91c1c');
+      ctx.fillStyle = g;
+    }
+  },
+  'aurora': {
+    name: '💚 Aurora',
+    css: 'linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #a855f7 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createLinearGradient(x - r, y + r, x + r, y - r);
+      g.addColorStop(0, '#10b981'); g.addColorStop(0.5, '#06b6d4'); g.addColorStop(1, '#a855f7');
+      ctx.fillStyle = g;
+    }
+  },
+  'mint': {
+    name: '🍃 Mint',
+    css: 'linear-gradient(135deg, #d1fae5 0%, #059669 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      g.addColorStop(0, '#d1fae5'); g.addColorStop(1, '#059669');
+      ctx.fillStyle = g;
+    }
+  },
+  'rose-gold': {
+    name: '🌹 Rose Gold',
+    css: 'linear-gradient(135deg, #fecdd3 0%, #f43f5e 60%, #be123c 100%)',
+    paint(ctx, x, y, r) {
+      const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+      g.addColorStop(0, '#fecdd3'); g.addColorStop(0.6, '#f43f5e'); g.addColorStop(1, '#be123c');
+      ctx.fillStyle = g;
+    }
+  },
+  // ---- Patterns ----
+  'checker': {
+    name: '🏁 Checker',
+    css: 'repeating-conic-gradient(#fff 0deg 90deg, #0f172a 90deg 180deg) 50% / 100% 100%',
+    paint(ctx, x, y, r) { ctx.fillStyle = '#fff'; },
+    afterFill(ctx, x, y, r) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x, y, r - 1, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#0f172a';
+      const sq = 8;
+      for (let i = -r; i < r; i += sq) {
+        for (let j = -r; j < r; j += sq) {
+          if ((Math.floor((i + r) / sq) + Math.floor((j + r) / sq)) % 2 === 0) {
+            ctx.fillRect(x + i, y + j, sq + 0.5, sq + 0.5);
+          }
+        }
+      }
+      ctx.restore();
+    }
+  },
+  'stripes': {
+    name: '🦓 Stripes',
+    css: 'repeating-linear-gradient(45deg, #f8fafc 0 8px, #0f172a 8px 14px)',
+    paint(ctx, x, y, r) { ctx.fillStyle = '#f8fafc'; },
+    afterFill(ctx, x, y, r) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x, y, r - 1, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#0f172a';
+      ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+      const w = 5;
+      for (let i = -r * 1.5; i < r * 1.5; i += w * 2) ctx.fillRect(i, -r * 1.5, w, r * 3);
+      ctx.restore();
+    }
+  },
+  'polka': {
+    name: '🔴 Polka',
+    css: 'radial-gradient(#fff 25%, transparent 26%) 0 0 / 14px 14px, #ef4444',
+    paint(ctx, x, y, r) { ctx.fillStyle = '#ef4444'; },
+    afterFill(ctx, x, y, r) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x, y, r - 1, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = '#fff';
+      const dots = [[-12, -10], [10, -8], [-8, 8], [12, 10], [-14, 2], [4, -14], [0, 14]];
+      for (const [dx, dy] of dots) {
+        ctx.beginPath(); ctx.arc(x + dx, y + dy, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+};
+
+const TRAIL_PRESETS = {
+  'rainbow': {
+    name: '🌈 Rainbow',
+    css: 'linear-gradient(90deg, #ef4444, #f59e0b, #eab308, #22c55e, #06b6d4, #8b5cf6)',
+    paint(ctx, pts) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 0; i < pts.length - 1; i++) {
+        const t = i / Math.max(1, pts.length - 1);
+        ctx.strokeStyle = `hsl(${t * 300}, 90%, 55%)`;
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+        ctx.stroke();
+      }
+    }
+  },
+  'flame': {
+    name: '🔥 Flame',
+    css: 'linear-gradient(90deg, #b91c1c, #f59e0b, #fef08a)',
+    paint(ctx, pts) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 0; i < pts.length - 1; i++) {
+        const t = i / Math.max(1, pts.length - 1);
+        const r = Math.round(200 + 55 * t);
+        const g = Math.round(40 + 200 * t);
+        ctx.strokeStyle = `rgb(${r}, ${g}, 0)`;
+        ctx.lineWidth = 4 + t * 9;
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+        ctx.stroke();
+      }
+    }
+  },
+  'comet': {
+    name: '☄️ Comet',
+    css: 'linear-gradient(90deg, rgba(192,132,252,0.1), #c084fc, #f0abfc)',
+    paint(ctx, pts) {
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      for (let i = 0; i < pts.length - 1; i++) {
+        const t = i / Math.max(1, pts.length - 1);
+        ctx.globalAlpha = 0.15 + t * 0.6;
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 3 + t * 9;
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+        ctx.stroke();
+      }
+    }
+  }
+};
+
+// Legacy single-color trail map — kept so existing 'fire'/'ice'/etc.
+// owners still see their trail.
+const LEGACY_TRAIL_COLORS = {
+  fire: 'orange', ice: '#bae6fd', plasma: '#a855f7', shadow: '#1e293b', gold: '#facc15'
+};
+
+// Set ctx.fillStyle for the player circle. Returns the preset so the
+// caller can run any afterFill overlay (e.g. checker pattern).
+function paintSkin(ctx, x, y, r, skin) {
+  const preset = SKIN_PRESETS[skin];
+  if (preset) { preset.paint(ctx, x, y, r); return preset; }
+  if (skin && /^#[0-9a-fA-F]{3,8}$/.test(skin)) { ctx.fillStyle = skin; return null; }
+  ctx.fillStyle = '#ffffff';
+  return null;
+}
+
+// CSS background string for previews (profile / shop / unboxing).
+function skinCss(skin) {
+  const preset = SKIN_PRESETS[skin];
+  if (preset) return preset.css;
+  if (skin && /^#[0-9a-fA-F]{3,8}$/.test(skin)) return skin;
+  return '#ffffff';
+}
+
+function trailCss(trail) {
+  const preset = TRAIL_PRESETS[trail];
+  if (preset) return preset.css;
+  if (LEGACY_TRAIL_COLORS[trail]) return LEGACY_TRAIL_COLORS[trail];
+  return '#94a3b8';
+}
+
 function render() {
   if (!views.gameView.classList.contains('hidden') && myRole) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1287,22 +1493,28 @@ function render() {
       trails[p.id].push({ x: p.x, y: p.y, age: 0 });
       if (trails[p.id].length > 20) trails[p.id].shift();
       if (p.trail && p.trail !== 'none') {
-        ctx.beginPath();
-        trails[p.id].forEach((t, i) => { if (i === 0) ctx.moveTo(t.x, t.y); else ctx.lineTo(t.x, t.y); t.age++; });
-        let trailColor = 'cyan';
-        if (p.trail === 'fire') trailColor = 'orange';
-        if (p.trail === 'ice') trailColor = '#bae6fd';
-        if (p.trail === 'plasma') trailColor = '#a855f7';
-        if (p.trail === 'shadow') trailColor = '#1e293b';
-        if (p.trail === 'gold') trailColor = '#facc15';
-        ctx.strokeStyle = trailColor;
-        ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.globalAlpha = 0.5; ctx.stroke();
+        const pts = trails[p.id];
+        pts.forEach(t => { t.age++; });
+        const trailPreset = TRAIL_PRESETS[p.trail];
+        ctx.globalAlpha = 0.6;
+        if (trailPreset) {
+          trailPreset.paint(ctx, pts);
+        } else {
+          // Legacy single-color trail.
+          ctx.beginPath();
+          pts.forEach((t, i) => { if (i === 0) ctx.moveTo(t.x, t.y); else ctx.lineTo(t.x, t.y); });
+          ctx.strokeStyle = LEGACY_TRAIL_COLORS[p.trail] || 'cyan';
+          ctx.lineWidth = 10; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.stroke();
+        }
         ctx.globalAlpha = 1.0;
       }
 
       if (p.hp <= 0 && gameMode === 'coredefender') ctx.globalAlpha = 0.3;
       ctx.beginPath(); ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
-      ctx.fillStyle = p.skin || '#ffffff'; ctx.fill();
+      const skinPreset = paintSkin(ctx, p.x, p.y, 25, p.skin);
+      ctx.fill();
+      if (skinPreset && skinPreset.afterFill) skinPreset.afterFill(ctx, p.x, p.y, 25);
       // Border: in blastball use a thick team-colored ring so you can
       // tell teammates from opponents at a glance. Other modes use the
       // existing energy-state border.
